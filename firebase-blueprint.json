@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Premium real estate broker profile details",
+      "type": "object",
+      "properties": {
+        "walletBalance": {
+          "type": "number",
+          "description": "Available wallet balance in EGP"
+        },
+        "isPremium": {
+          "type": "boolean",
+          "description": "Whether user has subscribed to the Premium CRM"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "name": {
+          "type": "string",
+          "description": "User display name"
+        }
+      },
+      "required": ["walletBalance", "isPremium", "email", "name"]
+    },
+    "Unit": {
+      "title": "Property Unit",
+      "description": "Direct owner listing with legal status check",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "location": { "type": "string" },
+        "propertyType": { "type": "string" },
+        "legalPaperStatus": { "type": "string", "enum": ["verified_boost", "verified", "none"] },
+        "ownerName": { "type": "string" },
+        "ownerPhone": { "type": "string" },
+        "ownerPercentage": { "type": "number" }
+      },
+      "required": ["title", "description", "price", "location", "propertyType", "legalPaperStatus", "ownerName", "ownerPhone", "ownerPercentage"]
+    },
+    "Lead": {
+      "title": "Qualified Lead",
+      "description": "AI-Qualified prospective buyer details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "chatId": { "type": "string" },
+        "budget": { "type": "string" },
+        "propertyType": { "type": "string" },
+        "location": { "type": "string" },
+        "legalPapersRequired": { "type": "boolean" },
+        "qualification": { "type": "string", "enum": ["cold", "warm", "hot"] },
+        "value": { "type": "number" },
+        "status": { "type": "string", "enum": ["available", "claimed"] },
+        "claimedBy": { "type": "string" },
+        "claimedByEmail": { "type": "string" }
+      },
+      "required": ["name", "email", "chatId", "budget", "propertyType", "location", "legalPapersRequired", "qualification", "value", "status"]
+    },
+    "Transaction": {
+      "title": "Wallet Transaction",
+      "description": "Pay-as-you-go financial ledger line",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["credit", "charge", "refund"] },
+        "description": { "type": "string" },
+        "method": { "type": "string", "enum": ["visa", "vodafone", "etisalat", "orange", "wepay", "instapay"] }
+      },
+      "required": ["userId", "userEmail", "amount", "type", "description", "method"]
+    },
+    "RefundRequest": {
+      "title": "Refund Request",
+      "description": "Broker refund claim for false lead assessment",
+      "type": "object",
+      "properties": {
+        "leadId": { "type": "string" },
+        "leadName": { "type": "string" },
+        "brokerId": { "type": "string" },
+        "brokerEmail": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["reporting", "reviewing", "refunded"] },
+        "amount": { "type": "number" }
+      },
+      "required": ["leadId", "leadName", "brokerId", "brokerEmail", "reason", "status", "amount"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Broker profiles"
+    },
+    "units/{unitId}": {
+      "schema": "Unit",
+      "description": "Property listings"
+    },
+    "leads/{leadId}": {
+      "schema": "Lead",
+      "description": "AI Qualified Leads"
+    },
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Wallet transactions history"
+    },
+    "refunds/{refundId}": {
+      "schema": "RefundRequest",
+      "description": "Refund audit requests"
+    }
+  }
+}
