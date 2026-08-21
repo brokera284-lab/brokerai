@@ -116,6 +116,7 @@ export function useBrokerData() {
 
     const uid = currentUser?.uid || null;
     const isSuper = currentUser?.email === "brokera284@gmail.com";
+    const isAuthUser = auth.currentUser !== null && !!uid && uid !== "guest_broker_user";
 
     // 1. GLOBAL PROPERTY INVENTORY SYNC (AI Discovery & Marketplace)
     // Always sync units across all tenants so Guests, Buyers, Brokers & Admins can search global inventory
@@ -138,10 +139,18 @@ export function useBrokerData() {
       setLoadingData(false);
     });
 
-    if (!currentUser) {
-      setLeads([]);
-      setTransactions([]);
-      setRefunds([]);
+    // If user is unauthenticated or guest, use local state only and do not attach protected Firestore listeners
+    if (!isAuthUser) {
+      if (currentUser?.uid === "guest_broker_user") {
+        setUserProfile({
+          isPremium: false,
+          email: "guest_broker@brokerai.com",
+          name: "Guest Broker",
+          country: "EG",
+          tenantId: "guest_broker_user"
+        });
+      }
+      setLoadingData(false);
       return () => {
         unsubUnits();
       };
@@ -163,10 +172,10 @@ export function useBrokerData() {
         const detected = "EG";
         const initialProf = {
           isPremium: isSuper || false,
-          email: currentUser.email || "",
-          name: currentUser.displayName || "Broker Account",
+          email: currentUser?.email || "",
+          name: currentUser?.displayName || "Broker Account",
           country: detected,
-          tenantId: currentUser.tenantId || uid
+          tenantId: currentUser?.tenantId || uid
         };
         setUserProfile(initialProf);
         setSelectedCountry(detected);
@@ -337,10 +346,11 @@ export function useBrokerData() {
   // Profile actions (Immediate Direct Payments & Subscription)
   const processDirectPayment = async (amount: number, type: "credit" | "charge", desc: string, method: Transaction["method"]) => {
     const uid = currentUser?.uid || "guest_broker_user";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
-    // 1. Try Firestore update
+    // 1. Try Firestore update only if authenticated
     let success = false;
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         await addDoc(collection(db, "transactions"), {
           userId: uid,
@@ -358,8 +368,8 @@ export function useBrokerData() {
       }
     }
 
-    // 2. If using local fallback or Firestore failed
-    if (!success || usingLocalFallback) {
+    // 2. If using local fallback, unauthenticated, or Firestore failed
+    if (!success || usingLocalFallback || !isAuthUser) {
       const newTx: Transaction = {
         id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         userId: uid,
@@ -376,9 +386,10 @@ export function useBrokerData() {
 
   const subscribePremium = async (method: Transaction["method"]) => {
     const uid = currentUser?.uid || "guest_broker_user";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
     let success = false;
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const userRef = doc(db, "users", uid);
         await updateDoc(userRef, { 
@@ -401,7 +412,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       setIsPremium(true);
 
       const newTx: Transaction = {
@@ -424,6 +435,7 @@ export function useBrokerData() {
     const uid = currentUser?.uid || "guest_broker_user";
     const email = currentUser?.email || "guest_broker@brokerai.com";
     const tenantId = userProfile?.tenantId || uid;
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
     
     const enrichedUnit = {
       ...unit,
@@ -432,7 +444,7 @@ export function useBrokerData() {
       tenantId: tenantId
     };
 
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         await addDoc(collection(db, "units"), {
           ...enrichedUnit,
@@ -445,7 +457,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       const fallbackUnit: Unit = {
         id: `unit_${Date.now()}`,
         ...enrichedUnit,
@@ -457,7 +469,8 @@ export function useBrokerData() {
 
   const updateUnit = async (unitId: string, updatedFields: Partial<Omit<Unit, "id" | "createdAt">>) => {
     let success = false;
-    if (!usingLocalFallback) {
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const unitRef = doc(db, "units", unitId);
         await updateDoc(unitRef, updatedFields);
@@ -468,7 +481,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       setUnits((prev) =>
         prev.map((u) => (u.id === unitId ? { ...u, ...updatedFields } : u))
       );
@@ -477,7 +490,8 @@ export function useBrokerData() {
 
   const deleteUnit = async (unitId: string) => {
     let success = false;
-    if (!usingLocalFallback) {
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const unitRef = doc(db, "units", unitId);
         await deleteDoc(unitRef);
@@ -488,7 +502,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       setUnits((prev) => prev.filter((u) => u.id !== unitId));
     }
   };
@@ -522,12 +536,13 @@ export function useBrokerData() {
   const claimLead = async (leadId: string, value: number) => {
     const uid = currentUser?.uid || "guest_broker_user";
     const email = currentUser?.email || "guest_broker@brokerai.com";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
     // Register a direct checkout transaction
     await processDirectPayment(value, "charge", `Direct Payment: Unlocked Lead Contact Details (Lead ID: ${leadId.slice(-4)})`, "visa");
 
     let success = false;
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const leadRef = doc(db, "leads", leadId);
         await updateDoc(leadRef, {
@@ -542,7 +557,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       setLeads((prev) => 
         prev.map((l) => l.id === leadId ? { ...l, status: "claimed", claimedBy: uid, claimedByEmail: email } : l)
       );
@@ -553,6 +568,7 @@ export function useBrokerData() {
     let success = false;
     const uid = currentUser?.uid || "guest_broker_user";
     const isSuper = currentUser?.email === "brokera284@gmail.com";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
     // Standard users only clear their own leads. Superusers clear all.
     const leadsToClear = leads.filter((lead) => {
@@ -560,7 +576,7 @@ export function useBrokerData() {
       return lead.propertyUploaderId === uid;
     });
 
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const promises = leadsToClear.map((lead) => {
           if (!lead.id) {
@@ -578,7 +594,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       const idsToClear = leadsToClear.map(l => l.id);
       setLeads((prev) => prev.filter((l) => !idsToClear.includes(l.id)));
     }
@@ -586,7 +602,8 @@ export function useBrokerData() {
 
   const clearAllData = async () => {
     let success = false;
-    if (!usingLocalFallback) {
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
+    if (isAuthUser && !usingLocalFallback) {
       try {
         // 1. Clear all units
         const unitPromises = units.map((u) => {
@@ -635,11 +652,12 @@ export function useBrokerData() {
   const requestRefund = async (leadId: string, leadName: string, reason: string, amount: number) => {
     const uid = currentUser?.uid || "guest_broker_user";
     const email = currentUser?.email || "guest_broker@brokerai.com";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
     let success = false;
     let refundId = `refund_${Date.now()}`;
 
-    if (!usingLocalFallback) {
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const refundRef = await addDoc(collection(db, "refunds"), {
           leadId,
@@ -659,7 +677,7 @@ export function useBrokerData() {
       }
     }
 
-    if (!success || usingLocalFallback) {
+    if (!success || usingLocalFallback || !isAuthUser) {
       const fallbackRefund: RefundRequest = {
         id: refundId,
         leadId,
@@ -677,7 +695,7 @@ export function useBrokerData() {
     // Auto-advance statuses after simulated intervals for an amazing interactive demo flow!
     setTimeout(async () => {
       let step1Success = false;
-      if (!usingLocalFallback) {
+      if (isAuthUser && !usingLocalFallback) {
         try {
           const docRef = doc(db, "refunds", refundId);
           await updateDoc(docRef, { status: "reviewing" });
@@ -686,7 +704,7 @@ export function useBrokerData() {
           setUsingLocalFallback(true);
         }
       }
-      if (!step1Success || usingLocalFallback) {
+      if (!step1Success || usingLocalFallback || !isAuthUser) {
         setRefunds((prev) => 
           prev.map((r) => r.id === refundId ? { ...r, status: "reviewing" } : r)
         );
@@ -694,7 +712,7 @@ export function useBrokerData() {
       
       setTimeout(async () => {
         let step2Success = false;
-        if (!usingLocalFallback) {
+        if (isAuthUser && !usingLocalFallback) {
           try {
             const docRef = doc(db, "refunds", refundId);
             await updateDoc(docRef, { status: "refunded" });
@@ -703,7 +721,7 @@ export function useBrokerData() {
             setUsingLocalFallback(true);
           }
         }
-        if (!step2Success || usingLocalFallback) {
+        if (!step2Success || usingLocalFallback || !isAuthUser) {
           setRefunds((prev) => 
             prev.map((r) => r.id === refundId ? { ...r, status: "refunded" } : r)
           );
@@ -717,7 +735,8 @@ export function useBrokerData() {
   const updateCountry = async (countryCode: string) => {
     setSelectedCountry(countryCode);
     const uid = currentUser?.uid || "guest_broker_user";
-    if (!usingLocalFallback) {
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
+    if (isAuthUser && !usingLocalFallback) {
       try {
         const profileRef = doc(db, "users", uid);
         await updateDoc(profileRef, { country: countryCode });
