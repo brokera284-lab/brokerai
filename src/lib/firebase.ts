@@ -32,6 +32,7 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase Auth
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
 // Initialize Firestore with the specific databaseId if defined
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(default)");

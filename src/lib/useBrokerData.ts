@@ -10,6 +10,7 @@ import {
   orderBy, 
   doc, 
   updateDoc, 
+  deleteDoc,
   onSnapshot, 
   setDoc,
   serverTimestamp,
@@ -48,6 +49,15 @@ export interface FirestoreErrorInfo {
   }
 }
 
+export function getTimestampMs(val: any): number {
+  if (!val) return 0;
+  if (typeof val === "string") return new Date(val).getTime();
+  if (typeof val.toMillis === "function") return val.toMillis();
+  if (val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+  if (val instanceof Date) return val.getTime();
+  return 0;
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -69,8 +79,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+export const DEFAULT_UNITS: Unit[] = [];
+
 export function useBrokerData() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   
   // Real-time states
@@ -97,109 +110,185 @@ export function useBrokerData() {
     return unsubscribe;
   }, []);
 
-  // Sync data from Firestore once user is authenticated or available
+  // Sync data from Firestore
   useEffect(() => {
     if (loadingUser) return;
 
-    // Use a fixed fallback ID if user is not authenticated to ensure offline-first/demo works perfectly
-    const uid = currentUser?.uid || "guest_broker_user";
+    const uid = currentUser?.uid || null;
+    const isSuper = currentUser?.email === "brokera284@gmail.com";
 
-    // 1. Sync Wallet Balance and Premium Status from user Profile
-    const profileRef = doc(db, "users", uid);
+    // 1. GLOBAL PROPERTY INVENTORY SYNC (AI Discovery & Marketplace)
+    // Always sync units across all tenants so Guests, Buyers, Brokers & Admins can search global inventory
+    const unsubUnits = onSnapshot(collection(db, "units"), (snapshot) => {
+      const list: Unit[] = [];
+      snapshot.forEach((d) => {
+        const u = { id: d.id, ...d.data() } as Unit;
+        // Tenant Isolation Filter for properties:
+        // Private units are visible ONLY to owner or super_admin.
+        // Public and AI_Searchable units are globally discoverable across ALL tenants.
+        if (isSuper || (uid && u.uploaderId === uid) || u.visibility !== "private") {
+          list.push(u);
+        }
+      });
+      list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
+      setUnits(list);
+      setLoadingData(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "units");
+      setLoadingData(false);
+    });
+
+    if (!currentUser) {
+      setLeads([]);
+      setTransactions([]);
+      setRefunds([]);
+      return () => {
+        unsubUnits();
+      };
+    }
+
+    // 2. Sync Premium Status & Profile Data from user Profile
+    const profileRef = doc(db, "users", uid!);
     const unsubProfile = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setWalletBalance(data.walletBalance ?? 1500);
-        setIsPremium(data.isPremium || false);
-        if (data.country) {
-          setSelectedCountry(data.country);
-        } else {
-          const detected = autoDetectCountry();
-          setSelectedCountry(detected);
-          updateDoc(profileRef, { country: detected }).catch(() => {});
+        setUserProfile(data);
+        setWalletBalance(0);
+        setIsPremium(data.isPremium || isSuper);
+        setSelectedCountry("EG");
+        if (data.country !== "EG") {
+          updateDoc(profileRef, { country: "EG" }).catch(() => {});
         }
       } else {
-        const detected = autoDetectCountry();
+        const detected = "EG";
+        const initialProf = {
+          isPremium: isSuper || false,
+          email: currentUser.email || "",
+          name: currentUser.displayName || "Broker Account",
+          country: detected,
+          tenantId: currentUser.tenantId || uid
+        };
+        setUserProfile(initialProf);
         setSelectedCountry(detected);
         // Initialize profile
-        setDoc(profileRef, {
-          walletBalance: 1500, // Pre-load with 1,500 EGP as starting allowance
-          isPremium: false,
-          email: currentUser?.email || "broker@example.com",
-          name: currentUser?.displayName || "Elite Broker",
-          country: detected
-        }).catch((err) => {
+        setDoc(profileRef, initialProf).catch((err) => {
           handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
         });
-        setWalletBalance(1500);
-        setIsPremium(false);
+        setWalletBalance(0);
+        setIsPremium(isSuper || false);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${uid}`);
       setUsingLocalFallback(true);
-      // Initialize starter balance in fallback
-      setWalletBalance((prev) => prev || 1500);
-      setSelectedCountry((prev) => prev || autoDetectCountry());
+      setWalletBalance(0);
+      setSelectedCountry("EG");
     });
 
-    // 2. Sync Units
-    const qUnits = query(collection(db, "units"), orderBy("createdAt", "desc"));
-    const unsubUnits = onSnapshot(qUnits, (snapshot) => {
-      const list: Unit[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Unit);
+    // 3. Sync Leads (Scoped queries)
+    let unsubLeads1 = () => {};
+    let unsubLeadsTenant = () => {};
+    let unsubLeads2 = () => {};
+    let unsubLeads3 = () => {};
+
+    if (isSuper) {
+      unsubLeads1 = onSnapshot(collection(db, "leads"), (snapshot) => {
+        const list: Lead[] = [];
+        snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as Lead));
+        list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
+        setLeads(list);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, "leads");
       });
-      setUnits(list);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, "units");
-      setUsingLocalFallback(true);
-    });
+    } else {
+      let uploaderLeads: Lead[] = [];
+      let tenantLeads: Lead[] = [];
+      let claimedLeads: Lead[] = [];
+      let availableLeads: Lead[] = [];
 
-    // 3. Sync Leads
-    const qLeads = query(collection(db, "leads"), orderBy("createdAt", "desc"));
-    const unsubLeads = onSnapshot(qLeads, (snapshot) => {
-      const list: Lead[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Lead);
+      const updateMergedLeads = () => {
+        const map = new Map<string, Lead>();
+        uploaderLeads.forEach(l => map.set(l.id, l));
+        tenantLeads.forEach(l => map.set(l.id, l));
+        claimedLeads.forEach(l => map.set(l.id, l));
+        availableLeads.forEach(l => map.set(l.id, l));
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
+        setLeads(merged);
+      };
+
+      unsubLeads1 = onSnapshot(query(collection(db, "leads"), where("propertyUploaderId", "==", uid)), (snapshot) => {
+        uploaderLeads = [];
+        snapshot.forEach((d) => uploaderLeads.push({ id: d.id, ...d.data() } as Lead));
+        updateMergedLeads();
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, "leads(propertyUploaderId)");
       });
-      setLeads(list);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, "leads");
-      setUsingLocalFallback(true);
-    });
 
-    // 4. Sync Transactions
-    const qTx = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
-    const unsubTx = onSnapshot(qTx, (snapshot) => {
+      const userTenantId = userProfile?.tenantId || uid;
+      if (userTenantId && userTenantId !== uid) {
+        unsubLeadsTenant = onSnapshot(query(collection(db, "leads"), where("tenantId", "==", userTenantId)), (snapshot) => {
+          tenantLeads = [];
+          snapshot.forEach((d) => tenantLeads.push({ id: d.id, ...d.data() } as Lead));
+          updateMergedLeads();
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, "leads(tenantId)");
+        });
+      }
+
+      unsubLeads2 = onSnapshot(query(collection(db, "leads"), where("claimedBy", "==", uid)), (snapshot) => {
+        claimedLeads = [];
+        snapshot.forEach((d) => claimedLeads.push({ id: d.id, ...d.data() } as Lead));
+        updateMergedLeads();
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, "leads(claimedBy)");
+      });
+
+      unsubLeads3 = onSnapshot(query(collection(db, "leads"), where("status", "==", "available")), (snapshot) => {
+        availableLeads = [];
+        snapshot.forEach((d) => availableLeads.push({ id: d.id, ...d.data() } as Lead));
+        updateMergedLeads();
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, "leads(available)");
+      });
+    }
+
+    // 4. Sync Transactions (Scoped query)
+    const txQuery = isSuper 
+      ? collection(db, "transactions")
+      : query(collection(db, "transactions"), where("userId", "==", uid));
+
+    const unsubTx = onSnapshot(txQuery, (snapshot) => {
       const list: Transaction[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Transaction);
-      });
+      snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as Transaction));
+      list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
       setTransactions(list);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, "transactions");
-      setUsingLocalFallback(true);
     });
 
-    // 5. Sync Refunds
-    const qRefunds = query(collection(db, "refunds"), orderBy("createdAt", "desc"));
-    const unsubRefunds = onSnapshot(qRefunds, (snapshot) => {
+    // 5. Sync Refunds (Scoped query)
+    const refundsQuery = isSuper
+      ? collection(db, "refunds")
+      : query(collection(db, "refunds"), where("brokerId", "==", uid));
+
+    const unsubRefunds = onSnapshot(refundsQuery, (snapshot) => {
       const list: RefundRequest[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as RefundRequest);
-      });
+      snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as RefundRequest));
+      list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
       setRefunds(list);
       setLoadingData(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, "refunds");
-      setUsingLocalFallback(true);
       setLoadingData(false);
     });
 
     return () => {
-      unsubProfile();
       unsubUnits();
-      unsubLeads();
+      unsubProfile();
+      unsubLeads1();
+      unsubLeadsTenant();
+      unsubLeads2();
+      unsubLeads3();
       unsubTx();
       unsubRefunds();
     };
@@ -245,18 +334,14 @@ export function useBrokerData() {
     setCurrentUser(null);
   };
 
-  // Profile actions (Wallet & Subscription)
-  const adjustWallet = async (amount: number, type: "credit" | "charge", desc: string, method: Transaction["method"]) => {
+  // Profile actions (Immediate Direct Payments & Subscription)
+  const processDirectPayment = async (amount: number, type: "credit" | "charge", desc: string, method: Transaction["method"]) => {
     const uid = currentUser?.uid || "guest_broker_user";
-    const newBalance = type === "credit" ? walletBalance + amount : walletBalance - amount;
 
     // 1. Try Firestore update
     let success = false;
     if (!usingLocalFallback) {
       try {
-        const userRef = doc(db, "users", uid);
-        await updateDoc(userRef, { walletBalance: newBalance });
-        
         await addDoc(collection(db, "transactions"), {
           userId: uid,
           userEmail: currentUser?.email || "guest_broker@brokerai.com",
@@ -268,15 +353,13 @@ export function useBrokerData() {
         });
         success = true;
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
+        handleFirestoreError(err, OperationType.WRITE, `transactions`);
         setUsingLocalFallback(true);
       }
     }
 
     // 2. If using local fallback or Firestore failed
     if (!success || usingLocalFallback) {
-      setWalletBalance(newBalance);
-      
       const newTx: Transaction = {
         id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         userId: uid,
@@ -338,10 +421,21 @@ export function useBrokerData() {
   // Units actions
   const addUnit = async (unit: Omit<Unit, "id" | "createdAt">) => {
     let success = false;
+    const uid = currentUser?.uid || "guest_broker_user";
+    const email = currentUser?.email || "guest_broker@brokerai.com";
+    const tenantId = userProfile?.tenantId || uid;
+    
+    const enrichedUnit = {
+      ...unit,
+      uploaderId: uid,
+      uploaderEmail: email,
+      tenantId: tenantId
+    };
+
     if (!usingLocalFallback) {
       try {
         await addDoc(collection(db, "units"), {
-          ...unit,
+          ...enrichedUnit,
           createdAt: serverTimestamp()
         });
         success = true;
@@ -354,10 +448,48 @@ export function useBrokerData() {
     if (!success || usingLocalFallback) {
       const fallbackUnit: Unit = {
         id: `unit_${Date.now()}`,
-        ...unit,
+        ...enrichedUnit,
         createdAt: new Date().toISOString() as any
       };
       setUnits((prev) => [fallbackUnit, ...prev]);
+    }
+  };
+
+  const updateUnit = async (unitId: string, updatedFields: Partial<Omit<Unit, "id" | "createdAt">>) => {
+    let success = false;
+    if (!usingLocalFallback) {
+      try {
+        const unitRef = doc(db, "units", unitId);
+        await updateDoc(unitRef, updatedFields);
+        success = true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `units/${unitId}`);
+        setUsingLocalFallback(true);
+      }
+    }
+
+    if (!success || usingLocalFallback) {
+      setUnits((prev) =>
+        prev.map((u) => (u.id === unitId ? { ...u, ...updatedFields } : u))
+      );
+    }
+  };
+
+  const deleteUnit = async (unitId: string) => {
+    let success = false;
+    if (!usingLocalFallback) {
+      try {
+        const unitRef = doc(db, "units", unitId);
+        await deleteDoc(unitRef);
+        success = true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `units/${unitId}`);
+        setUsingLocalFallback(true);
+      }
+    }
+
+    if (!success || usingLocalFallback) {
+      setUnits((prev) => prev.filter((u) => u.id !== unitId));
     }
   };
 
@@ -391,6 +523,9 @@ export function useBrokerData() {
     const uid = currentUser?.uid || "guest_broker_user";
     const email = currentUser?.email || "guest_broker@brokerai.com";
 
+    // Register a direct checkout transaction
+    await processDirectPayment(value, "charge", `Direct Payment: Unlocked Lead Contact Details (Lead ID: ${leadId.slice(-4)})`, "visa");
+
     let success = false;
     if (!usingLocalFallback) {
       try {
@@ -412,6 +547,88 @@ export function useBrokerData() {
         prev.map((l) => l.id === leadId ? { ...l, status: "claimed", claimedBy: uid, claimedByEmail: email } : l)
       );
     }
+  };
+
+  const clearAllLeads = async () => {
+    let success = false;
+    const uid = currentUser?.uid || "guest_broker_user";
+    const isSuper = currentUser?.email === "brokera284@gmail.com";
+
+    // Standard users only clear their own leads. Superusers clear all.
+    const leadsToClear = leads.filter((lead) => {
+      if (isSuper) return true;
+      return lead.propertyUploaderId === uid;
+    });
+
+    if (!usingLocalFallback) {
+      try {
+        const promises = leadsToClear.map((lead) => {
+          if (!lead.id) {
+            console.warn("Skipping lead deletion due to missing document ID:", lead);
+            return Promise.resolve();
+          }
+          const leadRef = doc(db, "leads", lead.id);
+          return deleteDoc(leadRef);
+        });
+        await Promise.all(promises);
+        success = true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, "leads");
+        setUsingLocalFallback(true);
+      }
+    }
+
+    if (!success || usingLocalFallback) {
+      const idsToClear = leadsToClear.map(l => l.id);
+      setLeads((prev) => prev.filter((l) => !idsToClear.includes(l.id)));
+    }
+  };
+
+  const clearAllData = async () => {
+    let success = false;
+    if (!usingLocalFallback) {
+      try {
+        // 1. Clear all units
+        const unitPromises = units.map((u) => {
+          if (!u.id) return Promise.resolve();
+          return deleteDoc(doc(db, "units", u.id));
+        });
+        
+        // 2. Clear all leads
+        const leadPromises = leads.map((l) => {
+          if (!l.id) return Promise.resolve();
+          return deleteDoc(doc(db, "leads", l.id));
+        });
+
+        // 3. Clear all transactions
+        const txPromises = transactions.map((t) => {
+          if (!t.id) return Promise.resolve();
+          return deleteDoc(doc(db, "transactions", t.id));
+        });
+
+        // 4. Clear all refunds
+        const refundPromises = refunds.map((r) => {
+          if (!r.id) return Promise.resolve();
+          return deleteDoc(doc(db, "refunds", r.id));
+        });
+
+        await Promise.all([
+          ...unitPromises,
+          ...leadPromises,
+          ...txPromises,
+          ...refundPromises
+        ]);
+        success = true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, "all_collections");
+        setUsingLocalFallback(true);
+      }
+    }
+
+    setUnits([]);
+    setLeads([]);
+    setTransactions([]);
+    setRefunds([]);
   };
 
   // Refund actions
@@ -491,8 +708,8 @@ export function useBrokerData() {
             prev.map((r) => r.id === refundId ? { ...r, status: "refunded" } : r)
           );
         }
-        // Add credit to wallet upon successful refund
-        await adjustWallet(amount, "credit", `Refund Approved for Lead: ${leadName}`, "visa");
+        // Process direct refund payment upon successful claim approval
+        await processDirectPayment(amount, "credit", `Direct Payment Refund for Lead: ${leadName}`, "visa");
       }, 10000); // 10 seconds to approve
     }, 5000); // 5 seconds to review
   };
@@ -523,6 +740,8 @@ export function useBrokerData() {
     return `${formattedVal} ${config.symbol}`;
   };
 
+  const isSuperUser = currentUser?.email === "brokera284@gmail.com";
+
   return {
     currentUser,
     loadingUser,
@@ -533,17 +752,23 @@ export function useBrokerData() {
     refunds,
     walletBalance,
     isPremium,
+    isSuperUser,
     selectedCountry,
     updateCountry,
     getActiveCountryConfig,
     formatCurrency,
     loginWithGoogle,
     logout,
-    adjustWallet,
+    processDirectPayment,
+    adjustWallet: processDirectPayment,
     subscribePremium,
     addUnit,
+    updateUnit,
+    deleteUnit,
     addLead,
     claimLead,
+    clearAllLeads,
+    clearAllData,
     requestRefund,
     loadingAuth,
     authError,

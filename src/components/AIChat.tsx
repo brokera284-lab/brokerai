@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Message, Lead, Unit } from "../types";
+import { Message, Lead, Unit, ChatThread } from "../types";
 import { 
   Sparkles, Send, MapPin, Building, DollarSign, FileCheck, ArrowRight, 
   RefreshCw, AlertCircle, Paperclip, ArrowUp, MessageSquare, Plus, 
   PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, ChevronDown, 
   Copy, Check, ThumbsUp, ThumbsDown, Volume2, Trash2, Settings, 
-  HelpCircle, LogOut, Info, ShieldAlert, Command, X 
+  HelpCircle, LogOut, Info, ShieldAlert, Command, X, BarChart3, Building2, FileText, Phone, CheckCircle2, Loader2,
+  Bed, Bath, Maximize, Pencil, ShieldCheck, Lock, PhoneCall, ChevronLeft, ChevronRight, Eye, Image as ImageIcon, Layers
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { COUNTRIES } from "../lib/countries";
@@ -13,31 +14,253 @@ import { cn } from "../lib/utils";
 import { liquidMetalFragmentShader, ShaderMount } from "@paper-design/shaders";
 import { LiquidMetalButton } from "./LiquidMetalButton";
 import { LiquidMetalCard } from "./LiquidMetalCard";
+// @ts-ignore
+import brokerLogo from "../broker.png";
+
+function getUnitFallbackImage(propertyType: string): string {
+  const type = (propertyType || "").toLowerCase();
+  if (type.includes("villa")) {
+    return "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80";
+  }
+  if (type.includes("penthouse")) {
+    return "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=800&q=80";
+  }
+  if (type.includes("chalet")) {
+    return "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80";
+  }
+  return "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80";
+}
+
+// Generate a rich multi-photo gallery for any property unit
+function getPropertyImageGallery(unit: any): string[] {
+  if (!unit) return [];
+  if (Array.isArray(unit.images) && unit.images.length > 0) {
+    return unit.images;
+  }
+  const mainImage = unit.imageUrl || getUnitFallbackImage(unit.propertyType || "");
+  const type = (unit.propertyType || "").toLowerCase();
+
+  let gallery: string[] = [mainImage];
+
+  if (type.includes("villa")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else if (type.includes("penthouse")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1512915922686-57c11dde9b6b?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else if (type.includes("chalet")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else {
+    gallery.push(
+      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80"
+    );
+  }
+
+  return Array.from(new Set(gallery));
+}
+
+// Location matching helper (Bilingual: Arabic & English)
+function isLocationMatch(propertyLocation: string, propertyTitle: string, targetLoc: string): boolean {
+  if (!targetLoc) return false;
+  
+  const propLoc = (propertyLocation || "").toLowerCase();
+  const propTitle = (propertyTitle || "").toLowerCase();
+  const search = targetLoc.toLowerCase().trim();
+
+  const clusters: Record<string, string[]> = {
+    "sheikh zayed": [
+      "sheikh zayed", "zayed", "sodic", "zayed spine", 
+      "dahshour", "beverly hills", "zed park",
+      "smart village", "hyper one", "rabwa", "october zayed",
+      "الشيخ زايد", "زايد", "سوديك", "بفرلي هيلز", "بيفرلي هيلز", "دهشور", "زد", "هايبر وان", "الربوة", "زايد الجديدة"
+    ],
+    "6 october": [
+      "6 october", "6th of october", "october", "new october",
+      "mall of egypt", "mall of arabia", "wahat road", "6 october university", "must university",
+      "sun capital", "dreamland", "ashgar city", "ashgar park",
+      "٦ أكتوبر", "6 اكتوبر", "اكتوبر", "أكتوبر", "اكتوبر الجديدة", "مول مصر", "مول العرب", "طريق الواحات", "دريم لاند", "صن كابيتال"
+    ],
+    "new cairo": [
+      "new cairo", "cairo", "tagamo", "fifth settlement", "1st settlement", "3rd settlement",
+      "90th street", "golden square", "auc", "american university", "rehab",
+      "madinaty", "bayt el watan", "investors area",
+      "القاهرة الجديدة", "التجمع", "التجمع الخامس", "التجمع الاول", "التجمع الثالث", "شارع التسعين", "التسعين", "الجولدن سكوير", "الجامعة الامريكية", "الرحاب", "مدينتي", "بيت الوطن", "المستثمرين"
+    ],
+    "north coast": [
+      "north coast", "coast", "sidi abdel rahman", "ras el hekma",
+      "marina", "alamein", "new alamein", "dabaa road", "fouka bay", "marassi", "amwaj",
+      "الساحل", "الساحل الشمالي", "سيدي عبد الرحمن", "رأس الحكمة", "راس الحكمة", "مارينا", "العلمين", "العلمين الجديدة", "مراسي", "أمواج", "فوكا"
+    ],
+    "new capital": [
+      "new capital", "capital", "r7", "r8", "central business district", "iconic tower",
+      "government district", "green river", "diplomatic district",
+      "العاصمة الادارية", "العاصمة الجديدة", "العاصمة", "البرج الايقوني", "النهر الاخضر", "حي السفارات", "حي المال والاعمال", "ار7", "ار8"
+    ],
+    "el shorouk": [
+      "el shorouk", "shorouk", "shorouk city", "suez road",
+      "الشروق", "مدينة الشروق", "طريق السويس"
+    ],
+    "maadi": [
+      "maadi", "degla maadi", "corniche maadi", "zahraa maadi",
+      "المعادي", "دجلة المعادي", "كورنيش المعادي", "زهراء المعادي"
+    ],
+    "giza central": [
+      "giza", "dokki", "mohandessin", "harm", "pyramids", "faisal", "zamalek",
+      "الجيزة", "الدقي", "المهندسين", "الهرم", "الاهرامات", "فيصل", "الزمالك"
+    ]
+  };
+
+  let matchingAliases: string[] = [search];
+  for (const [key, aliases] of Object.entries(clusters)) {
+    if (key === search || aliases.includes(search)) {
+      matchingAliases = aliases;
+      break;
+    }
+  }
+
+  if (!matchingAliases.includes(search)) {
+    matchingAliases.push(search);
+  }
+
+  return matchingAliases.some(alias => propLoc.includes(alias) || propTitle.includes(alias));
+}
+
+// Property type matching helper (Bilingual: Arabic & English)
+function isPropertyTypeMatch(propertyType: string, propertyTitle: string, targetType: string): boolean {
+  if (!targetType) return true;
+  
+  const propType = (propertyType || "").toLowerCase();
+  const propTitle = (propertyTitle || "").toLowerCase();
+  const search = targetType.toLowerCase();
+
+  const clusters: Record<string, string[]> = {
+    "villa": ["villa", "townhouse", "twin house", "standalone", "فيلا", "فيلات", "فلل", "تاون هاوس", "توين هاوس", "ستاند الون", "مستقلة"],
+    "apartment": ["apartment", "studio", "flat", "duplex", "شقة", "شقق", "استوديو", "استديو", "دوبلكس"],
+    "penthouse": ["penthouse", "roof", "بنتهاوس", "بنت هاوس", "روف", "سطح"],
+    "chalet": ["chalet", "cabin", "beach house", "شاليه", "شاليهات", "كابينة", "بيت شاطئ"]
+  };
+
+  let matchingAliases: string[] = [search];
+  for (const [key, aliases] of Object.entries(clusters)) {
+    if (key === search || aliases.includes(search)) {
+      matchingAliases = aliases;
+      break;
+    }
+  }
+
+  return matchingAliases.some(alias => propType.includes(alias) || propTitle.includes(alias));
+}
+
+const SUGGESTIONS = [
+  {
+    id: "card-modern-villa",
+    title: "Modern Villa",
+    description: "Find a modern smart villa with high evaluation price",
+    prompt: "Find a modern smart villa with high evaluation price",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 21h18"/><path d="M4 21V10l8-6 8 6v11"/><path d="M9 21v-6h6v6"/><path d="M9 12h.01M15 12h.01"/>
+      </svg>
+    )
+  },
+  {
+    id: "card-skyline-penthouse",
+    title: "Skyline Penthouse",
+    description: "Compare market trends in Skyline District with high budget",
+    prompt: "Compare market trends in Skyline District with high budget",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 21h18"/><path d="M6 21V9l3-2v14"/><path d="M13 21V4l3 2v15"/><path d="M20 21v-8l0-1"/>
+      </svg>
+    )
+  },
+  {
+    id: "card-claim-lead",
+    title: "Claim a Lead",
+    description: "How do I buy or unlock lead contact details?",
+    prompt: "How do I buy or unlock lead contact details?",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/><path d="M11 13v2h2v-2"/>
+      </svg>
+    )
+  },
+  {
+    id: "card-new-cairo",
+    title: "New Cairo Launch",
+    description: "Show me new developments with flexible payment plans",
+    prompt: "Show me new developments with flexible payment plans",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 21h18"/><path d="M5 21V11l4-3 4 3v10"/><path d="M13 21V7l3-3 3 3v14"/><path d="M8 21v-4M13 12h.01M13 15h.01M13 18h.01"/>
+      </svg>
+    )
+  },
+  {
+    id: "card-rental-yield",
+    title: "Rental Yield",
+    description: "Compare rental yield across North Coast projects",
+    prompt: "Compare rental yield across North Coast projects",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 17l5-5 4 4 7-8"/><path d="M14 8h5v5"/>
+      </svg>
+    )
+  },
+  {
+    id: "card-score-lead",
+    title: "Score a Lead",
+    description: "Score this lead as Cold, Warm, or Hot",
+    prompt: "Score this lead as Cold, Warm, or Hot",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>
+      </svg>
+    )
+  }
+];
 
 interface AIChatProps {
   key?: any;
   units: Unit[];
+  currentUser?: any;
   selectedCountry: string;
   formatCurrency: (amountInEGP: number) => string;
   onLeadGenerated: (lead: Omit<Lead, "id" | "createdAt">) => Promise<void>;
+  onLogoClick?: () => void;
+  conversations: Record<string, ChatThread>;
+  setConversations: React.Dispatch<React.SetStateAction<Record<string, ChatThread>>>;
+  activeThreadId: string;
+  setActiveThreadId: (id: string) => void;
 }
 
-interface ChatThread {
-  id: string;
-  title: string;
-  messages: Message[];
-  extracted: {
-    budget: string;
-    propertyType: string;
-    location: string;
-    legalPapersRequired: boolean | null;
-  };
-  qualification: "cold" | "warm" | "hot" | null;
-  qualificationValue: number;
-  leadSubmitted: boolean;
-}
-
-export default function AIChat({ units, selectedCountry, formatCurrency, onLeadGenerated }: AIChatProps) {
+export default function AIChat({ 
+  units, 
+  currentUser, 
+  selectedCountry, 
+  formatCurrency, 
+  onLeadGenerated, 
+  onLogoClick,
+  conversations,
+  setConversations,
+  activeThreadId,
+  setActiveThreadId
+}: AIChatProps) {
   // Navigation & panels state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
@@ -53,6 +276,10 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Edit message state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
+
   // States for advanced animated input design
   const [attachments, setAttachments] = useState<string[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState<number>(-1);
@@ -61,8 +288,21 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [inputFocused, setInputFocused] = useState(false);
   const [inputHovered, setInputHovered] = useState(false);
+
+  // Contact Agent modal states
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [selectedUnitForContact, setSelectedUnitForContact] = useState<Unit | null>(null);
+  const [submittingContact, setSubmittingContact] = useState(false);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+
+  // Property Details & Gallery modal states
+  const [selectedPropertyForDetails, setSelectedPropertyForDetails] = useState<Unit | any | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const commandPaletteRef = useRef<HTMLDivElement>(null);
   const chatboxShaderRef = useRef<HTMLDivElement>(null);
   // biome-ignore lint/suspicious/noExplicitAny: External library without types
@@ -227,9 +467,14 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
   };
 
   const handleAttachFile = () => {
-    const mockFileNames = ["deed-decal.pdf", "registration-license.pdf", "tax-clearance.pdf", "estate-plan.png", "evaluation-report.docx"];
-    const mockFileName = mockFileNames[Math.floor(Math.random() * mockFileNames.length)];
-    setAttachments(prev => [...prev, mockFileName]);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const names = Array.from(e.target.files).map((f: any) => f.name);
+      setAttachments(prev => [...prev, ...names]);
+    }
   };
 
   const removeAttachment = (index: number) => {
@@ -244,71 +489,21 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
     setTimeout(() => setRecentCommand(null), 2000);
   };
 
-  // Chat Thread Histories - simulated & real
-  const [conversations, setConversations] = useState<Record<string, ChatThread>>({
-    "current": {
-      id: "current",
-      title: "New Property Chat",
-      messages: [
-        {
-          role: "assistant",
-          content: "Hello, Explorer. I am Broker AI. I'm here to analyze your requirements and connect you with elite properties. What location, budget, and features are you looking for in your ideal estate?"
-        }
-      ],
-      extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
-      qualification: null,
-      qualificationValue: 0,
-      leadSubmitted: false
-    },
-    "history-1": {
-      id: "history-1",
-      title: "🏙️ Modern Smart Villa",
-      messages: [
-        { role: "user", content: "Looking for a luxury smart villa with verified registration." },
-        { role: "assistant", content: "I've analyzed our registry for high-tier smart villas. Riyadh and Dubai Marina have multiple certified smart architecture estates with legal papers cleared. What is your estimated investment range?" },
-        { role: "user", content: "My budget is around 12,000,000 EGP." },
-        { role: "assistant", content: "Perfect! A budget of 12,000,000 EGP is ideal for prime location villas. I have updated our registry. We are processing verified smart developments with high evaluation margins." }
-      ],
-      extracted: { budget: "12M EGP", propertyType: "Villa", location: "Riyadh & Dubai", legalPapersRequired: true },
-      qualification: "hot",
-      qualificationValue: 1000,
-      leadSubmitted: true
-    },
-    "history-2": {
-      id: "history-2",
-      title: "📊 Skyline Penthouse",
-      messages: [
-        { role: "user", content: "Compare market trends in Dubai Skyline District." },
-        { role: "assistant", content: "Excellent selection. The Skyline District is showing 12% YoY capital appreciation. Are you seeking personal residence or high-yield rental returns?" }
-      ],
-      extracted: { budget: "High-end", propertyType: "Penthouse", location: "Skyline District", legalPapersRequired: null },
-      qualification: "warm",
-      qualificationValue: 500,
-      leadSubmitted: true
-    },
-    "history-3": {
-      id: "history-3",
-      title: "🏢 Under 3,000,000 EGP",
-      messages: [
-        { role: "user", content: "List all properties under 3,000,000 EGP" },
-        { role: "assistant", content: "We have multiple certified properties in that range, including cozy apartments and townhouses. Do you need immediate delivery or flexible installments?" }
-      ],
-      extracted: { budget: "< 3M EGP", propertyType: "Apartment", location: "Flexible", legalPapersRequired: false },
-      qualification: "cold",
-      qualificationValue: 100,
-      leadSubmitted: true
-    }
-  });
-
-  const [activeThreadId, setActiveThreadId] = useState<string>("current");
-
   // Helper shortcut references to current conversation properties
-  const activeThread = conversations[activeThreadId] || conversations["current"];
-  const messages = activeThread.messages;
-  const extracted = activeThread.extracted;
-  const qualification = activeThread.qualification;
-  const qualificationValue = activeThread.qualificationValue;
-  const leadSubmitted = activeThread.leadSubmitted;
+  const activeThread = conversations[activeThreadId] || conversations["current"] || Object.values(conversations)[0] || {
+    id: "current",
+    title: "New Property Chat",
+    messages: [],
+    extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
+    qualification: null,
+    qualificationValue: 0,
+    leadSubmitted: false
+  };
+  const messages = activeThread.messages || [];
+  const extracted = activeThread.extracted || { budget: "", propertyType: "", location: "", legalPapersRequired: null };
+  const qualification = activeThread.qualification || null;
+  const qualificationValue = activeThread.qualificationValue || 0;
+  const leadSubmitted = activeThread.leadSubmitted || false;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -332,12 +527,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
     const newThread: ChatThread = {
       id: newId,
       title: "New Chat Thread",
-      messages: [
-        {
-          role: "assistant",
-          content: "Hello, Explorer. I am Broker AI. I'm here to analyze your requirements and connect you with elite properties. What location, budget, and features are you looking for in your ideal estate?"
-        }
-      ],
+      messages: [],
       extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
       qualification: null,
       qualificationValue: 0,
@@ -363,12 +553,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
         current: {
           id: "current",
           title: "New Property Chat",
-          messages: [
-            {
-              role: "assistant",
-              content: "Hello, Explorer. I am Broker AI. I'm here to analyze your requirements and connect you with elite properties. What location, budget, and features are you looking for in your ideal estate?"
-            }
-          ],
+          messages: [],
           extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
           qualification: null,
           qualificationValue: 0,
@@ -387,16 +572,17 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
     }
   };
 
-  const submitQuery = async (queryText: string) => {
-    if (!queryText.trim()) return;
+  const submitQueryWithMessages = async (updatedMessages: Message[], dynamicTitle?: string) => {
+    // Ensure every message has a unique stable ID to preserve message ordering
+    const sanitizedInputMessages = updatedMessages.map((m, idx) => ({
+      ...m,
+      id: m.id || `msg_${m.role}_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`
+    }));
 
-    const userMessage: Message = { role: "user", content: queryText };
-    const updatedMessages = [...messages, userMessage];
-    
-    // Update active thread title dynamically on first user message
-    let dynamicTitle = activeThread.title;
-    if (activeThread.title === "New Chat Thread" || activeThread.title === "New Property Chat") {
-      dynamicTitle = queryText.length > 25 ? queryText.substring(0, 25) + "..." : queryText;
+    // Update active thread title dynamically on first user message if needed
+    let finalTitle = activeThread.title;
+    if (dynamicTitle && (activeThread.title === "New Chat Thread" || activeThread.title === "New Property Chat")) {
+      finalTitle = dynamicTitle;
     }
 
     // Update active thread state immediately
@@ -404,12 +590,11 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
       ...prev,
       [activeThreadId]: {
         ...prev[activeThreadId],
-        title: dynamicTitle,
-        messages: updatedMessages
+        title: finalTitle,
+        messages: sanitizedInputMessages
       }
     }));
 
-    setInput("");
     setLoading(true);
 
     const config = COUNTRIES.find(c => c.code === selectedCountry) || COUNTRIES[0];
@@ -419,7 +604,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          messages: updatedMessages,
+          messages: sanitizedInputMessages,
           units,
           currencyCode: config.currency,
           currencySymbol: config.symbol,
@@ -434,11 +619,10 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
       const data = await res.json();
       
       const botMessage: Message = {
+        id: `msg_assistant_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         role: "assistant",
         content: data.response || "No response received."
       };
-      
-      const nextMessages = [...updatedMessages, botMessage];
 
       // Prepare state variables for extracted data
       const nextExtracted = {
@@ -452,54 +636,204 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
       let nextQualVal = qualificationValue;
       let nextSubmitted = leadSubmitted;
 
-      // If qualified and not already logged/submitted
-      if (data.qualification && !leadSubmitted) {
+      // If qualified, track qualification locally but do NOT automatically submit a mock lead
+      if (data.qualification) {
         nextQual = data.qualification;
         let val = 100;
         if (data.qualification === "warm") val = 500;
         if (data.qualification === "hot") val = 1000;
         nextQualVal = val;
+      }
 
-        // Submit to Firestore as qualified lead
-        const finalLead: Omit<Lead, "id" | "createdAt"> = {
-          name: `Explorer #${Math.floor(Math.random() * 9000 + 1000)}`,
-          email: `explorer.${Math.floor(Math.random() * 1000)}@brokerai.com`,
-          chatId: `chat_${Date.now()}`,
-          budget: data.extractedInfo?.budget || "Flexible",
-          propertyType: data.extractedInfo?.propertyType || "Residential",
-          location: data.extractedInfo?.location || "Prime District",
-          legalPapersRequired: !!data.extractedInfo?.legalPapersRequired,
-          qualification: data.qualification,
-          value: val,
-          status: "available"
+      // Handle automatic lead routing when buyer expresses intent to proceed with a property
+      if (data.action === "create_lead" && data.ownerId && !nextSubmitted) {
+        try {
+          const targetUnit = units.find(u => 
+            (u.id && u.id === data.targetUnitId) || 
+            (u.title && data.targetUnitTitle && u.title.toLowerCase().includes(data.targetUnitTitle.toLowerCase()))
+          );
+          const ownerUploaderId = targetUnit?.uploaderId || data.ownerId;
+          const ownerTenantId = targetUnit?.tenantId || ownerUploaderId;
+          const targetId = targetUnit?.id || data.targetUnitId || "";
+
+          await onLeadGenerated({
+            name: currentUser?.displayName || "Interested Property Buyer",
+            email: currentUser?.email || "buyer_prospect@brokerai.com",
+            phone: currentUser?.phoneNumber || "01000000000",
+            chatId: activeThreadId,
+            budget: data.extractedInfo?.budget || nextExtracted.budget || "Market Price",
+            propertyType: data.extractedInfo?.propertyType || nextExtracted.propertyType || "Property",
+            location: data.extractedInfo?.location || nextExtracted.location || "Egypt",
+            legalPapersRequired: data.extractedInfo?.legalPapersRequired || false,
+            qualification: data.qualification || "hot",
+            value: 1000,
+            status: "available",
+            interestedUnitId: targetId,
+            propertyId: targetId,
+            interestedUnitTitle: data.targetUnitTitle || targetUnit?.title || "Property Unit",
+            propertyUploaderId: ownerUploaderId,
+            tenantId: ownerTenantId
+          });
+          nextSubmitted = true;
+        } catch (leadErr) {
+          console.warn("Auto lead creation notice:", leadErr);
+        }
+      }
+
+      setConversations(prev => {
+        const currentThread = prev[activeThreadId] || prev["current"];
+        if (!currentThread) return prev;
+
+        const currentMsgs = currentThread.messages || [];
+        const alreadyHasBot = currentMsgs.some(m => m.id === botMessage.id);
+        const nextMessages = alreadyHasBot ? currentMsgs : [...sanitizedInputMessages, botMessage];
+
+        return {
+          ...prev,
+          [activeThreadId]: {
+            ...currentThread,
+            messages: nextMessages,
+            extracted: nextExtracted,
+            qualification: nextQual,
+            qualificationValue: nextQualVal,
+            leadSubmitted: nextSubmitted
+          }
         };
+      });
 
-        await onLeadGenerated(finalLead);
-        nextSubmitted = true;
+    } catch (err) {
+      console.warn("Client Chat Fallback Activated:", err);
+      
+      const userHistory = updatedMessages
+        .filter(m => m.role === "user")
+        .map(m => m.content.trim().toLowerCase());
+      const combinedHistory = userHistory.join(" ");
+
+      // Parse criteria
+      let detectedType = "";
+      if (combinedHistory.includes("villa")) detectedType = "Villa";
+      else if (combinedHistory.includes("apartment")) detectedType = "Apartment";
+      else if (combinedHistory.includes("penthouse")) detectedType = "Penthouse";
+      else if (combinedHistory.includes("chalet")) detectedType = "Chalet";
+
+      let detectedLoc = "";
+      if (combinedHistory.includes("new cairo") || combinedHistory.includes("cairo") || combinedHistory.includes("tagamo")) detectedLoc = "New Cairo";
+      else if (combinedHistory.includes("zayed") || combinedHistory.includes("sheikh zayed")) detectedLoc = "Sheikh Zayed";
+      else if (combinedHistory.includes("october") || combinedHistory.includes("6 october")) detectedLoc = "6 October";
+      else if (combinedHistory.includes("coast") || combinedHistory.includes("north coast")) detectedLoc = "North Coast";
+      else if (combinedHistory.includes("capital") || combinedHistory.includes("new capital")) detectedLoc = "New Capital";
+      else if (combinedHistory.includes("shorouk") || combinedHistory.includes("el shorouk")) detectedLoc = "El Shorouk";
+
+      let detectedBudget = "";
+      const budgetMatch = combinedHistory.match(/(\d+[\d,.]*)\s*(m|million|egp)?/);
+      if (budgetMatch) {
+        const val = budgetMatch[1].replace(/,/g, '');
+        const suffix = budgetMatch[2] || "";
+        if (suffix === "m" || suffix.includes("million")) {
+          detectedBudget = `${parseFloat(val) * 1000000} EGP`;
+        } else {
+          detectedBudget = `${val} EGP`;
+        }
+      }
+
+      let mockReply = "";
+      let nextExtracted = { ...extracted };
+
+      if (!detectedLoc) {
+        mockReply = "Which specific area are you looking for a property in?";
+        nextExtracted = {
+          budget: null,
+          propertyType: detectedType || null,
+          location: null,
+          legalPapersRequired: null
+        };
+      } else {
+        // Verify location exists in DB
+        const matchesLocationInDb = units.filter(u => isLocationMatch(u.location, u.title, detectedLoc));
+
+        if (matchesLocationInDb.length === 0) {
+          const availableLocs = Array.from(new Set(units.map(u => u.location))).slice(0, 3);
+          const reply = `Unfortunately, I couldn't find any available properties in ${detectedLoc} in our database at the moment.`;
+          const alternativeText = `You might want to explore these areas instead: ${availableLocs.join(", ")}`;
+
+          mockReply = `${reply} ${alternativeText}`;
+          nextExtracted = {
+            budget: detectedBudget || null,
+            propertyType: detectedType || null,
+            location: detectedLoc,
+            legalPapersRequired: null
+          };
+        } else if (!detectedBudget) {
+          // Ask for budget
+          mockReply = "What is your target budget?";
+          nextExtracted = {
+            budget: null,
+            propertyType: detectedType || null,
+            location: detectedLoc,
+            legalPapersRequired: null
+          };
+        } else {
+          // Both location & budget supplied. Search DB
+          const userBudgetNum = parseFloat(detectedBudget.replace(/[^0-9.]/g, ''));
+          const matched = units.filter(u => {
+            const matchesLoc = isLocationMatch(u.location, u.title, detectedLoc);
+            const matchesType = isPropertyTypeMatch(u.propertyType, u.title, detectedType);
+            const matchesBudget = u.price <= userBudgetNum * 1.15; // Up to 15% budget stretch
+
+            return matchesLoc && matchesType && matchesBudget;
+          });
+
+          if (matched.length > 0) {
+            const formattedUnits = matched.slice(0, 2).map(u => {
+              const imgUrl = u.imageUrl || getUnitFallbackImage(u.propertyType);
+              return `🏠 **${u.title}**\n📍 Location: ${u.location}\n💰 Price: ${u.price.toLocaleString()} EGP\n📝 Deeds: ${u.legalPaperStatus === "verified_boost" ? "✅ Verified" : "⚠️ Pending"}\n📸 Image: ${imgUrl}`;
+            }).join("\n\n---\n\n");
+
+            const question = "\n\nWould you like to connect with the owner or schedule a visit?";
+
+            mockReply = `I found these properties in ${detectedLoc}:\n\n${formattedUnits}${question}`;
+            
+            nextExtracted = {
+              budget: detectedBudget,
+              propertyType: detectedType || matched[0].propertyType || null,
+              location: detectedLoc,
+              legalPapersRequired: true
+            };
+          } else {
+            const reply = `Unfortunately, I couldn't find any available properties in ${detectedLoc} fitting your budget of ${detectedBudget}.`;
+
+            // Offer closest budget matches in the same location
+            const closestMatches = matchesLocationInDb
+              .sort((a, b) => a.price - b.price)
+              .slice(0, 2);
+
+            let alternativesText = "";
+            if (closestMatches.length > 0) {
+              const altItems = closestMatches.map(u => {
+                return `- **${u.title}** priced at ${u.price.toLocaleString()} EGP in ${u.location}`;
+              }).join("\n");
+
+              alternativesText = `\n\nHowever, here are other available options in the same area:\n${altItems}`;
+            }
+
+            mockReply = `${reply}${alternativesText}`;
+            
+            nextExtracted = {
+              budget: detectedBudget,
+              propertyType: detectedType || null,
+              location: detectedLoc,
+              legalPapersRequired: null
+            };
+          }
+        }
       }
 
       setConversations(prev => ({
         ...prev,
         [activeThreadId]: {
           ...prev[activeThreadId],
-          messages: nextMessages,
-          extracted: nextExtracted,
-          qualification: nextQual,
-          qualificationValue: nextQualVal,
-          leadSubmitted: nextSubmitted
-        }
-      }));
-
-    } catch (err) {
-      console.error("Chat Error:", err);
-      // Simulate/mock responses on credentials error
-      const mockReply = "I understand. Let me log your parameters into our registry. What specific documents or licenses do you require?";
-      
-      setConversations(prev => ({
-        ...prev,
-        [activeThreadId]: {
-          ...prev[activeThreadId],
-          messages: [...updatedMessages, { role: "assistant", content: mockReply }]
+          messages: [...updatedMessages, { role: "assistant", content: mockReply }],
+          extracted: nextExtracted
         }
       }));
     } finally {
@@ -507,10 +841,245 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
     }
   };
 
+  const submitQuery = async (queryText: string) => {
+    if (!queryText.trim()) return;
+
+    const userMessage: Message = { role: "user", content: queryText };
+    const updatedMessages = [...messages, userMessage];
+    
+    // Update active thread title dynamically on first user message
+    let dynamicTitle = activeThread.title;
+    if (activeThread.title === "New Chat Thread" || activeThread.title === "New Property Chat") {
+      dynamicTitle = queryText.length > 25 ? queryText.substring(0, 25) + "..." : queryText;
+    }
+
+    setInput("");
+    await submitQueryWithMessages(updatedMessages, dynamicTitle);
+  };
+
+  const handleEditSubmit = async (index: number) => {
+    if (!editingText.trim() || loading) return;
+
+    const truncatedMessages = messages.slice(0, index);
+    const editedUserMessage: Message = { role: "user", content: editingText };
+    const updatedMessages = [...truncatedMessages, editedUserMessage];
+
+    setEditingIndex(null);
+    setEditingText("");
+
+    await submitQueryWithMessages(updatedMessages);
+  };
+
+  const matchingUnits = React.useMemo(() => {
+    if (messages.length === 0) return [];
+    const queryLoc = extracted.location?.toLowerCase().trim() || "";
+    const queryType = extracted.propertyType?.toLowerCase().trim() || "";
+    const queryBudget = extracted.budget;
+    
+    // We strictly require location AND budget to show matching units.
+    // This prevents showing cards prematurely before the user specifies their budget or price range.
+    if (!queryLoc || !queryBudget) {
+      return [];
+    }
+    
+    const filtered = units.filter(unit => {
+      const locMatch = isLocationMatch(unit.location, unit.title, queryLoc);
+      const typeMatch = isPropertyTypeMatch(unit.propertyType, unit.title, queryType);
+      
+      return locMatch && typeMatch;
+    });
+
+    return filtered.slice(0, 3);
+  }, [units, extracted, messages]);
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactName.trim() || !contactPhone.trim()) return;
+
+    setSubmittingContact(true);
+    try {
+      const targetUnitId = selectedUnitForContact?.id || "";
+      const matchedDbUnit = units.find(u => {
+        if (!u) return false;
+        if (targetUnitId && u.id === targetUnitId) return true;
+        if (selectedUnitForContact?.title && u.title) {
+          const uTitle = u.title.toLowerCase().trim();
+          const sTitle = selectedUnitForContact.title.toLowerCase().trim();
+          return uTitle === sTitle || uTitle.includes(sTitle) || sTitle.includes(uTitle);
+        }
+        return false;
+      });
+
+      // The lead MUST belong to the CRM/tenant that owns the property
+      const propUploaderId = matchedDbUnit?.uploaderId || 
+                             selectedUnitForContact?.uploaderId || 
+                             (selectedUnitForContact as any)?.ownerUid || 
+                             (selectedUnitForContact as any)?.ownerId || 
+                             "guest_broker_user";
+
+      const propTenantId = matchedDbUnit?.tenantId || 
+                           selectedUnitForContact?.tenantId || 
+                           (selectedUnitForContact as any)?.tenantId || 
+                           propUploaderId;
+
+      const propId = matchedDbUnit?.id || targetUnitId || "";
+
+      const finalLead: Omit<Lead, "id" | "createdAt"> = {
+        name: contactName,
+        email: `${contactName.toLowerCase().replace(/\s+/g, ".")}@gmail.com`,
+        phone: contactPhone,
+        chatId: activeThread.id,
+        budget: extracted.budget || "Flexible",
+        propertyType: selectedUnitForContact?.propertyType || extracted.propertyType || "Residential",
+        location: selectedUnitForContact?.location || extracted.location || "Prime Spot",
+        legalPapersRequired: !!extracted.legalPapersRequired,
+        qualification: qualification || "hot",
+        value: qualificationValue || 1000,
+        status: "available",
+        interestedUnitTitle: selectedUnitForContact?.title || matchedDbUnit?.title || "Direct Catalog Match",
+        interestedUnitId: propId,
+        propertyId: propId,
+        tenantId: propTenantId,
+        propertyUploaderId: propUploaderId
+      };
+
+      await onLeadGenerated(finalLead);
+
+      setConversations(prev => ({
+        ...prev,
+        [activeThreadId]: {
+          ...prev[activeThreadId],
+          leadSubmitted: true
+        }
+      }));
+
+      setContactSubmitted(true);
+      setTimeout(() => {
+        setIsContactModalOpen(false);
+        setContactSubmitted(false);
+        setContactName("");
+        setContactPhone("");
+        setSelectedUnitForContact(null);
+      }, 2500);
+
+    } catch (err) {
+      console.error("Error generating lead:", err);
+    } finally {
+      setSubmittingContact(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     submitQuery(input);
+  };
+
+  interface ParsedProperty {
+    title: string;
+    location: string;
+    price: string;
+    isVerified: boolean;
+    imageUrl: string;
+    description: string;
+  }
+
+  const parsePropertiesFromMessage = (content: string) => {
+    if (!content) return { cleanText: "", properties: [] };
+    
+    const lines = content.split("\n");
+    const properties: ParsedProperty[] = [];
+    const textLines: string[] = [];
+    
+    let currentProp: ParsedProperty | null = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      if (line.startsWith("🏠") || line.includes("🏠")) {
+        if (currentProp) {
+          properties.push(currentProp);
+        }
+        const titleVal = line.replace(/🏠/g, "").replace(/\*\*/g, "").trim();
+        currentProp = {
+          title: titleVal,
+          location: "",
+          price: "",
+          isVerified: false,
+          imageUrl: "",
+          description: ""
+        };
+      } else if (currentProp) {
+        if (line.includes("📍")) {
+          currentProp.location = line.replace(/📍/g, "").replace(/Location:/g, "").replace(/\*\*/g, "").trim();
+        } else if (line.includes("💰")) {
+          currentProp.price = line.replace(/💰/g, "").replace(/Price:/g, "").replace(/\*\*/g, "").trim();
+        } else if (line.includes("📝")) {
+          currentProp.isVerified = line.includes("✅") || line.includes("Verified") || line.includes("verified_boost");
+        } else if (line.includes("📸") || line.includes("Image:")) {
+          const match = line.match(/(https?:\/\/[^\s]+|data:image\/[^\s]+)/i);
+          if (match) {
+            currentProp.imageUrl = match[1].replace(/[.,;)]+$/, "").trim();
+          }
+        } else if (line.includes("✨") || line.includes("Description:")) {
+          currentProp.description = line.replace(/✨/g, "").replace(/Description:/g, "").trim();
+        } else if (line === "---") {
+          properties.push(currentProp);
+          currentProp = null;
+        } else if (line === "") {
+          // Skip empty lines
+        } else {
+          properties.push(currentProp);
+          currentProp = null;
+          textLines.push(lines[i]);
+        }
+      } else {
+        if (line !== "---") {
+          textLines.push(lines[i]);
+        }
+      }
+    }
+    
+    if (currentProp) {
+      properties.push(currentProp);
+    }
+    
+    const cleanText = textLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    return { cleanText, properties };
+  };
+
+  const renderMessageWithImages = (content: string) => {
+    if (!content) return null;
+    
+    // Clean any stray markdown bold/italic markers
+    const sanitized = content.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1");
+    const lines = sanitized.split("\n");
+    return lines.map((line, lineIdx) => {
+      const urlMatch = line.match(/(https?:\/\/[^\s]+|data:image\/[^\s]+)/i);
+      if (urlMatch) {
+        const url = urlMatch[1];
+        const cleanUrl = url.replace(/[.,;)]+$/, "");
+        const isImg = cleanUrl.startsWith("data:image/") || cleanUrl.match(/\.(jpeg|jpg|gif|png|webp)/i) || cleanUrl.includes("images.unsplash.com") || line.includes("📸");
+        
+        if (isImg) {
+          const textBefore = line.split(url)[0] || "";
+          return (
+            <div key={lineIdx} className="my-2.5 space-y-2 text-left">
+              {textBefore.trim() && <p className="leading-relaxed whitespace-pre-wrap">{textBefore}</p>}
+              <div className="w-full max-w-sm rounded-xl overflow-hidden border border-white/10 shadow-md my-1.5 bg-white/[0.01]">
+                <img 
+                  src={cleanUrl} 
+                  alt="Unit Visual" 
+                  className="w-full h-40 object-cover hover:scale-[1.03] transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </div>
+          );
+        }
+      }
+      return <p key={lineIdx} className="leading-relaxed whitespace-pre-wrap text-left">{line}</p>;
+    });
   };
 
   const copyToClipboard = (text: string, index: number) => {
@@ -547,7 +1116,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
         messages: [
           {
             role: "assistant",
-            content: "Hello, Explorer. I am Broker AI. I'm here to analyze your requirements and connect you with elite properties. What location, budget, and features are you looking for in your ideal estate?"
+            content: "Welcome! I am your Broker AI Assistant 🏠. I am here to help you explore top real estate opportunities, answer investment and legal queries, and match your requirements with available units. How can I assist you today?"
           }
         ],
         extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
@@ -571,18 +1140,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
   ];
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#05070c]">
-      
-      {/* Custom Mockup Header */}
-      <header className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06] select-none shrink-0 bg-[#05070c]/90 backdrop-blur-md z-30">
-        <div className="logo flex items-center gap-2.5 font-extrabold text-[15px] tracking-wider text-[#F5F7FA] font-sans">
-          <span className="logo-dot"></span>
-          <span>BROKER AI</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="custom-tag font-mono">AI CHAT</span>
-        </div>
-      </header>
+    <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#050505]">
 
       {/* Main chat window taking up all remaining height */}
       <section className="flex-1 flex flex-col justify-between bg-transparent relative overflow-hidden">
@@ -591,113 +1149,51 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
         <div className="flex-1 overflow-y-auto scrollbar-thin relative p-4 md:p-6 lg:p-8 flex flex-col">
           
           {/* ========================================== */}
-          {/* INNER STATE 1: EMPTY GREETING WITH SUGGESTIONS */}
+          {/* INNER STATE 1: EMPTY GREETING */}
           {/* ========================================== */}
-          {messages.length === 1 ? (
-            <div className="w-full my-auto flex flex-col items-center justify-start animate-fade-in text-white py-2 md:py-6">
-              
-              {/* Custom Hero */}
-              <div className="custom-hero select-none shrink-0">
-                <div className="custom-eyebrow">Conversational Property Assistant</div>
-                <h1 className="custom-title">
-                  broker <span className="ai">ai</span>
-                </h1>
-                <p className="custom-sub">
-                  Analyze property guidelines, compare budgets, and extract qualified estate criteria seamlessly.
-                </p>
-              </div>
+          <AnimatePresence mode="wait">
+            {messages.length === 0 ? (
+              <motion.div
+                key="empty-state"
+                initial={{ opacity: 0, scale: 0.98, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, y: -15 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="w-full my-auto flex flex-col items-center justify-center text-white py-6 md:py-12"
+              >
+                
+                {/* Stitch Greeting */}
+                <div className="flex-1 max-w-4xl mx-auto w-full px-6 flex flex-col items-center justify-center text-center space-y-8 select-none">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#c4c7c8]/60 font-mono">
+                      Conversational Real Estate Intelligence
+                    </span>
+                    <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-white tracking-tight font-black">
+                      How can I help you today?
+                    </h2>
+                  </div>
+                </div>
 
-              {/* Custom suggestions Grid */}
-              <div className="custom-grid z-10 shrink-0">
-                <LiquidMetalCard
-                  id="card-modern-villa"
-                  title="Modern Villa"
-                  description="Find a modern smart villa with high evaluation price"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 21h18"/><path d="M4 21V10l8-6 8 6v11"/><path d="M9 21v-6h6v6"/><path d="M9 12h.01M15 12h.01"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("Find a modern smart villa with high evaluation price")}
-                />
-
-                <LiquidMetalCard
-                  id="card-skyline-penthouse"
-                  title="Skyline Penthouse"
-                  description="Compare market trends in Skyline District with high budget"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 21h18"/><path d="M6 21V9l3-2v14"/><path d="M13 21V4l3 2v15"/><path d="M20 21v-8l0-1"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("Compare market trends in Skyline District with high budget")}
-                />
-
-                <LiquidMetalCard
-                  id="card-claim-lead"
-                  title="Claim a Lead"
-                  description="How do I buy or unlock lead contact details?"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/><path d="M11 13v2h2v-2"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("How do I buy or unlock lead contact details?")}
-                />
-
-                <LiquidMetalCard
-                  id="card-new-cairo"
-                  title="New Cairo Launch"
-                  description="Show me new developments with flexible payment plans"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 21h18"/><path d="M5 21V11l4-3 4 3v10"/><path d="M13 21V7l3-3 3 3v14"/><path d="M8 21v-4M13 12h.01M13 15h.01M13 18h.01"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("Show me new developments with flexible payment plans")}
-                />
-
-                <LiquidMetalCard
-                  id="card-rental-yield"
-                  title="Rental Yield"
-                  description="Compare rental yield across North Coast projects"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 17l5-5 4 4 7-8"/><path d="M14 8h5v5"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("Compare rental yield across North Coast projects")}
-                />
-
-                <LiquidMetalCard
-                  id="card-score-lead"
-                  title="Score a Lead"
-                  description="Score this lead as Cold, Warm, or Hot"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>
-                    </svg>
-                  }
-                  onClick={() => fillPrompt("Score this lead as Cold, Warm, or Hot")}
-                />
-              </div>
-
-              <div className="custom-scroll-hint select-none shrink-0 mt-4">
-                ↓ scroll for more suggestions
-              </div>
-
-            </div>
-          ) : (
-            // ==========================================
-            // INNER STATE 2: ACTIVE DIALOGUE (CHAT THREAD)
-            // ==========================================
-            <div className="flex-1 space-y-6 max-w-4xl mx-auto w-full pb-8">
-              <AnimatePresence initial={false}>
+              </motion.div>
+            ) : (
+              // ==========================================
+              // INNER STATE 2: ACTIVE DIALOGUE (CHAT THREAD)
+              // ==========================================
+              <motion.div
+                key="active-state"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="flex-1 space-y-6 max-w-4xl mx-auto w-full pb-8"
+              >
+                <AnimatePresence initial={false}>
                 {messages.map((m, i) => {
                   const isBot = m.role === "assistant";
+                  const msgKey = m.id || `${m.role}-${i}-${m.content.slice(0, 32)}`;
                   return (
                     <motion.div
-                      key={i}
+                      key={msgKey}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25 }}
@@ -705,88 +1201,341 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
                     >
                       {/* Left Avatar for Bot */}
                       {isBot && (
-                        <div className="w-[34px] h-[34px] rounded-full bg-white/[0.08] border border-white/20 shadow-md flex items-center justify-center shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/20 shadow-md flex items-center justify-center shrink-0 hover:border-white/45 transition-colors duration-300">
                           <Sparkles size={15} className="text-white" />
                         </div>
                       )}
 
                       {/* Chat message body with ChatGPT styling */}
-                      <div className={`flex flex-col ${isBot ? "flex-1 max-w-[85%]" : "max-w-[75%]"}`}>
-                        {/* Name Header */}
-                        <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1 px-1 font-mono">
-                          {isBot ? "Broker AI" : "Prospect Explorer"}
-                        </span>
+                      {(() => {
+                        const { cleanText, properties } = parsePropertiesFromMessage(m.content);
 
-                        {/* Speech Bubble */}
-                        <div className={`p-4 rounded-2xl leading-relaxed text-sm shadow-sm transition-all relative ${
-                          isBot 
-                            ? "bg-white/[0.03] border border-white/[0.05] text-slate-100 rounded-tl-none" 
-                            : "bg-white text-[#040404] rounded-tr-none shadow-[0_4px_12px_rgba(255,255,255,0.05)] font-medium"
-                        }`}>
-                          <p className="whitespace-pre-line">{m.content}</p>
-                        </div>
-
-                        {/* Bottom Utility Actions Toolbar (ChatGPT Style) */}
-                        {isBot && (
-                          <div className="flex items-center gap-3.5 mt-2 px-1 text-slate-500">
-                            {/* Copy button */}
-                            <button
-                              onClick={() => copyToClipboard(m.content, i)}
-                              className="hover:text-white transition flex items-center gap-1 cursor-pointer text-xs"
-                              title="Copy response"
-                            >
-                              {copiedIndex === i ? (
-                                <>
-                                  <Check size={12} className="text-emerald-400" />
-                                  <span className="text-[10px] text-emerald-400 font-bold font-mono">Copied</span>
-                                </>
-                              ) : (
-                                <Copy size={12} />
+                        return (
+                          <div className={`flex flex-col ${isBot ? "flex-1 max-w-[85%]" : "max-w-[75%]"}`}>
+                            {/* Name Header */}
+                            <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1 px-1 font-mono flex items-center justify-between">
+                              <span>{isBot ? "Broker Assistant" : "Prospect Explorer"}</span>
+                              {!isBot && editingIndex !== i && (
+                                <button
+                                  onClick={() => {
+                                    setEditingIndex(i);
+                                    setEditingText(m.content);
+                                  }}
+                                  className="text-slate-400 hover:text-white ml-2 transition-colors flex items-center gap-1 text-[10px] font-normal font-sans cursor-pointer"
+                                  title="Edit message"
+                                >
+                                  <Pencil size={11} className="inline" />
+                                  <span>Edit</span>
+                                </button>
                               )}
-                            </button>
+                            </span>
 
-                            {/* Speech synthesis Read Aloud */}
-                            <button
-                              onClick={() => speakMessage(m.content, i)}
-                              className={`hover:text-white transition flex items-center gap-1 cursor-pointer text-xs ${
-                                speakingIndex === i ? "text-white" : ""
-                              }`}
-                              title={speakingIndex === i ? "Stop speaking" : "Read response aloud"}
-                            >
-                              <Volume2 size={12} className={speakingIndex === i ? "animate-pulse text-white" : ""} />
-                              {speakingIndex === i && (
-                                <span className="text-[10px] text-white font-bold font-mono">Speaking</span>
-                              )}
-                            </button>
+                             {/* Speech Bubble or Editing State with Liquid Glass styling */}
+                             {editingIndex === i ? (
+                               <div className="w-full mt-1.5 mb-2 flex flex-col gap-2">
+                                 <textarea
+                                   value={editingText}
+                                   onChange={(e) => setEditingText(e.target.value)}
+                                   className="w-full min-h-[80px] bg-white/[0.05] border border-white/20 rounded-xl p-3 text-white text-[13.5px] outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-sans resize-none shadow-inner"
+                                 />
+                                 <div className="flex gap-2 justify-end">
+                                   <button
+                                     onClick={() => {
+                                       setEditingIndex(null);
+                                       setEditingText("");
+                                     }}
+                                     className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors font-sans font-medium"
+                                   >
+                                     Cancel
+                                   </button>
+                                   <button
+                                     onClick={() => handleEditSubmit(i)}
+                                     disabled={loading || !editingText.trim()}
+                                     className="px-3 py-1.5 rounded-lg bg-white text-black font-semibold hover:bg-slate-200 text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 font-sans"
+                                   >
+                                     {loading && <Loader2 size={11} className="animate-spin" />}
+                                     Save & Resend
+                                   </button>
+                                 </div>
+                               </div>
+                             ) : (
+                               <div 
+                                 className={cn(
+                                   "p-5 rounded-2xl leading-relaxed text-[13.5px] transition-all relative shadow-lg backdrop-blur-md text-left",
+                                   isBot 
+                                     ? "glass-card border border-white/[0.08] text-slate-100 rounded-tl-none hover:border-white/20 hover:shadow-[0_0_20px_rgba(255,255,255,0.03)]" 
+                                     : "glass-card border border-white/[0.12] bg-white/[0.06] text-white rounded-tr-none hover:border-white/25 hover:shadow-[0_0_20px_rgba(255,255,255,0.04)]"
+                                 )}
+                               >
+                                 {renderMessageWithImages(cleanText || m.content)}
+                               </div>
+                             )}
 
-                            {/* Thumbs Feedback */}
-                            <button
-                              onClick={() => handleFeedback(i, "up")}
-                              className={`hover:text-emerald-400 transition cursor-pointer ${
-                                likedMessages[i] === "up" ? "text-emerald-400" : ""
-                              }`}
-                              title="Thumbs Up"
-                            >
-                              <ThumbsUp size={11} />
-                            </button>
-                            <button
-                              onClick={() => handleFeedback(i, "down")}
-                              className={`hover:text-red-400 transition cursor-pointer ${
-                                likedMessages[i] === "down" ? "text-red-400" : ""
-                              }`}
-                              title="Thumbs Down"
-                            >
-                              <ThumbsDown size={11} />
-                            </button>
+                            {/* Beautiful Glassmorphic Property Cards Underneath the Message Bubble Matching Reference Design */}
+                            {(() => {
+                              if (!isBot) return null;
+
+                              let displayProps = [...properties];
+                              
+                              // Check ONLY the preceding user message for THIS assistant message to prevent historic message re-ordering/shifting
+                              if (displayProps.length === 0 && units.length > 0) {
+                                const precedingUserMsg = (i > 0 && messages[i - 1]?.role === "user") ? messages[i - 1].content : "";
+                                
+                                const isReqPhotoOrVisit = /photo|picture|image|visit|book|appointment/i.test(precedingUserMsg);
+
+                                if (isReqPhotoOrVisit) {
+                                  units.slice(0, 2).forEach(u => {
+                                    displayProps.push({
+                                      title: u.title,
+                                      location: u.location,
+                                      price: formatCurrency(u.price),
+                                      isVerified: true,
+                                      imageUrl: u.imageUrl || getUnitFallbackImage(u.propertyType),
+                                      description: u.description || u.title
+                                    });
+                                  });
+                                }
+                              }
+
+                              if (displayProps.length === 0) return null;
+
+                              return (
+                                <div className="space-y-4 mt-3.5 mb-2 text-left">
+                                  {displayProps.map((prop: any, propIdx) => {
+                                    const titleLower = (prop.title || "").toLowerCase().trim();
+                                    const matchedUnit = units.find(u => {
+                                      if (!u) return false;
+                                      if (prop.id && u.id === prop.id) return true;
+                                      const dbTitle = (u.title || "").toLowerCase().trim();
+                                      return dbTitle.length > 0 && (dbTitle.includes(titleLower) || titleLower.includes(dbTitle));
+                                    });
+
+                                    const isVilla = (matchedUnit?.propertyType || "").toLowerCase().includes("villa") || 
+                                                    (matchedUnit?.price || 0) > 10000000 || 
+                                                    titleLower.includes("villa");
+                                    const beds = matchedUnit?.details?.bedrooms || (isVilla ? 3 : 2);
+                                    const baths = matchedUnit?.details?.bathrooms || (isVilla ? 2 : 2);
+                                    const refCode = prop.refCode || (matchedUnit?.id ? matchedUnit.id.slice(-5).toUpperCase() : "132UP");
+
+                                    const displayPrice = matchedUnit ? formatCurrency(matchedUnit.price) : (prop.price || "4,500,000 EGP");
+                                    const displayLocation = matchedUnit?.location || prop.location || "Sheikh Zayed, Giza";
+
+                                    const gallery = getPropertyImageGallery(matchedUnit || prop);
+
+                                    const handleOpenDetails = () => {
+                                      const targetUnit = matchedUnit || {
+                                        id: prop.id || matchedUnit?.id || "unit-1",
+                                        title: prop.title,
+                                        location: displayLocation,
+                                        price: matchedUnit?.price || prop.price || 4500000,
+                                        propertyType: matchedUnit?.propertyType || prop.propertyType || "Villa",
+                                        legalPaperStatus: "verified_boost",
+                                        imageUrl: prop.imageUrl,
+                                        images: gallery,
+                                        description: prop.description || prop.title,
+                                        ownerName: matchedUnit?.ownerName || prop.ownerName || "Property Agent",
+                                        ownerPhone: matchedUnit?.ownerPhone || prop.ownerPhone || "+201000000000",
+                                        uploaderId: matchedUnit?.uploaderId || prop.uploaderId || prop.ownerId || (matchedUnit as any)?.ownerUid || "",
+                                        tenantId: matchedUnit?.tenantId || prop.tenantId || matchedUnit?.uploaderId || prop.uploaderId || ""
+                                      };
+                                      setSelectedPropertyForDetails(targetUnit);
+                                      setActivePhotoIndex(0);
+                                    };
+
+                                    const handleContactUnit = (e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      const activeUnit = matchedUnit || {
+                                        id: prop.id || matchedUnit?.id || "unit-1",
+                                        title: prop.title,
+                                        location: displayLocation,
+                                        price: matchedUnit?.price || prop.price || 4500000,
+                                        propertyType: matchedUnit?.propertyType || prop.propertyType || "Villa",
+                                        legalPaperStatus: "verified_boost",
+                                        imageUrl: prop.imageUrl,
+                                        images: gallery,
+                                        description: prop.description || prop.title,
+                                        ownerName: matchedUnit?.ownerName || prop.ownerName || "Property Agent",
+                                        ownerPhone: matchedUnit?.ownerPhone || prop.ownerPhone || "+201000000000",
+                                        uploaderId: matchedUnit?.uploaderId || prop.uploaderId || prop.ownerId || (matchedUnit as any)?.ownerUid || "",
+                                        tenantId: matchedUnit?.tenantId || prop.tenantId || matchedUnit?.uploaderId || prop.uploaderId || ""
+                                      };
+                                      setSelectedUnitForContact(activeUnit as any);
+                                      setIsContactModalOpen(true);
+                                    };
+
+                                    return (
+                                      <div 
+                                        key={`prop-card-below-${propIdx}`} 
+                                        onClick={handleOpenDetails}
+                                        className="w-full max-w-sm bg-[#121214] border border-white/10 hover:border-white/30 transition-all duration-300 rounded-2xl overflow-hidden shadow-2xl flex flex-col relative group text-left animate-in fade-in-50 slide-in-from-bottom-3 duration-300 my-2 cursor-pointer hover:shadow-emerald-950/20"
+                                      >
+                                        {/* Image Section */}
+                                        <div className="w-full h-48 relative overflow-hidden bg-black/40">
+                                          <img 
+                                            src={gallery[0] || prop.imageUrl || matchedUnit?.imageUrl} 
+                                            alt={prop.title} 
+                                            className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+                                            referrerPolicy="no-referrer"
+                                          />
+                                          
+                                          {/* Top Left Badge: VERIFIED Capsule */}
+                                          <div className="absolute top-3 left-3 bg-white text-[#0f172a] px-3 py-1 rounded-full text-[10.5px] font-extrabold tracking-wider uppercase shadow-md flex items-center gap-1.5 z-10 border border-slate-200">
+                                            <ShieldCheck size={14} className="text-emerald-600 fill-emerald-100" />
+                                            <span>VERIFIED</span>
+                                          </div>
+
+                                          {/* Photo count indicator badge */}
+                                          <div className="absolute top-3 right-3 bg-black/75 backdrop-blur-md border border-white/20 text-white px-2.5 py-1 rounded-full text-[10.5px] font-mono font-bold flex items-center gap-1.5 shadow-md z-10">
+                                            <ImageIcon size={12} className="text-amber-400" />
+                                            <span>{gallery.length} Photos</span>
+                                          </div>
+
+                                          {/* Bottom Right Price Tag */}
+                                          <div className="absolute bottom-3 right-3 bg-[#09090b]/90 backdrop-blur-md border border-white/15 px-3.5 py-1.5 rounded-xl text-white font-mono text-xs md:text-sm font-black tracking-tight shadow-xl">
+                                            {displayPrice}
+                                          </div>
+                                        </div>
+
+                                        {/* Card Body */}
+                                        <div className="p-4 space-y-3.5">
+                                          <div>
+                                            <h3 className="text-base font-extrabold text-white tracking-tight leading-snug line-clamp-1 group-hover:text-emerald-400 transition-colors">
+                                              {prop.title || matchedUnit?.title}
+                                            </h3>
+                                            <p className="text-slate-400 text-xs flex items-center gap-1.5 mt-1">
+                                              <MapPin size={13} className="text-slate-500 shrink-0" />
+                                              <span className="truncate font-medium">{displayLocation}</span>
+                                            </p>
+                                          </div>
+
+                                          {/* Selling Points / Highlight Description */}
+                                          {(prop.description || matchedUnit?.description) && (
+                                            <p className="text-xs text-sky-300/90 bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-xl leading-relaxed font-sans line-clamp-3">
+                                              {prop.description || matchedUnit?.description}
+                                            </p>
+                                          )}
+
+                                          {/* Spec Bar */}
+                                          <div className="flex items-center justify-between text-xs text-slate-300 border-t border-b border-white/10 py-2.5 px-1 font-mono">
+                                            <div className="flex items-center gap-1.5">
+                                              <Bed size={13} className="text-slate-400 shrink-0" />
+                                              <span>{beds} Beds</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                              <Bath size={13} className="text-slate-400 shrink-0" />
+                                              <span>{baths} Baths</span>
+                                            </div>
+                                            <div className="text-slate-400 font-semibold">
+                                              <span>Ref: #{refCode}</span>
+                                            </div>
+                                          </div>
+
+                                          {/* Action Buttons */}
+                                          <div className="pt-1 flex gap-2">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenDetails();
+                                              }}
+                                              className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-extrabold text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                            >
+                                              <Eye size={14} className="text-sky-400" />
+                                              <span>View Gallery</span>
+                                            </button>
+                                            <button
+                                              onClick={handleContactUnit}
+                                              className="flex-1 bg-white hover:bg-slate-200 text-slate-950 font-black text-xs uppercase py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95"
+                                            >
+                                              <PhoneCall size={13} className="text-slate-900" />
+                                              <span>Contact Agent</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+
+                            {/* Bottom Utility Actions Toolbar (ChatGPT Style) */}
+                            {isBot && (
+                              <div className="flex items-center gap-3.5 mt-2 px-1 text-slate-500">
+                                {/* Copy button */}
+                                <button
+                                  onClick={() => copyToClipboard(m.content, i)}
+                                  className="hover:text-white transition flex items-center gap-1 cursor-pointer text-xs"
+                                  title="Copy response"
+                                >
+                                  {copiedIndex === i ? (
+                                    <>
+                                      <Check size={12} className="text-emerald-400" />
+                                      <span className="text-[10px] text-emerald-400 font-bold font-mono">Copied</span>
+                                    </>
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+
+                                {/* Speech synthesis Read Aloud */}
+                                <button
+                                  onClick={() => speakMessage(m.content, i)}
+                                  className={`hover:text-white transition flex items-center gap-1 cursor-pointer text-xs ${
+                                    speakingIndex === i ? "text-white" : ""
+                                  }`}
+                                  title={speakingIndex === i ? "Stop speaking" : "Read response aloud"}
+                                >
+                                  <Volume2 size={12} className={speakingIndex === i ? "animate-pulse text-white" : ""} />
+                                  {speakingIndex === i && (
+                                    <span className="text-[10px] text-white font-bold font-mono">Speaking</span>
+                                  )}
+                                </button>
+
+                                {/* Thumbs Feedback */}
+                                <button
+                                  onClick={() => handleFeedback(i, "up")}
+                                  className={`hover:text-emerald-400 transition cursor-pointer ${
+                                    likedMessages[i] === "up" ? "text-emerald-400" : ""
+                                  }`}
+                                  title="Thumbs Up"
+                                >
+                                  <ThumbsUp size={11} />
+                                </button>
+                                <button
+                                  onClick={() => handleFeedback(i, "down")}
+                                  className={`hover:text-red-400 transition cursor-pointer ${
+                                    likedMessages[i] === "down" ? "text-red-400" : ""
+                                  }`}
+                                  title="Thumbs Down"
+                                >
+                                  <ThumbsDown size={11} />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       {/* Right Avatar for User */}
                       {!isBot && (
-                        <div className="w-[34px] h-[34px] rounded-full bg-slate-800 border border-white/10 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-black text-slate-200">U</span>
-                        </div>
+                        currentUser ? (
+                          currentUser.photoURL ? (
+                            <img 
+                              src={currentUser.photoURL} 
+                              alt="User" 
+                              className="w-9 h-9 rounded-full border border-white/20 shadow-md object-cover shrink-0 hover:border-white/45 transition-colors duration-300"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-white/10 border border-white/25 flex items-center justify-center text-xs font-black text-white uppercase font-mono shrink-0 hover:border-white/45 transition-colors duration-300">
+                              {currentUser.displayName ? currentUser.displayName[0] : (currentUser.email ? currentUser.email[0] : "U")}
+                            </div>
+                          )
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center text-xs font-black text-slate-300 font-mono shrink-0 hover:border-white/35 transition-colors duration-300">
+                            U
+                          </div>
+                        )
                       )}
                     </motion.div>
                   );
@@ -796,16 +1545,16 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
               {/* Bot loading state */}
               {loading && (
                 <div className="flex gap-4 md:gap-6">
-                  <div className="w-[34px] h-[34px] rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 animate-spin shrink-0">
-                    <RefreshCw size={14} />
+                  <div className="w-9 h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-white/50 shrink-0">
+                    <RefreshCw size={14} className="animate-spin" />
                   </div>
                   <div className="flex-1 max-w-[85%]">
                     <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1 font-mono">Broker AI Core</span>
-                    <div className="bg-white/5 border border-white/[0.05] text-slate-400 italic rounded-2xl rounded-tl-none p-4 text-xs shadow-sm flex items-center gap-2">
-                      <div className="flex space-x-1">
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <div className="glass-card border border-white/[0.08] text-slate-400 italic rounded-2xl rounded-tl-none p-5 text-[13.5px] shadow-sm flex items-center gap-3">
+                      <div className="flex space-x-1 shrink-0">
+                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                       </div>
                       <span>Analyzing credentials & extracting legal registry parameters...</span>
                     </div>
@@ -813,31 +1562,10 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
                 </div>
               )}
 
-              {/* AI Qualified Stream Banner */}
-              {qualification && (
-                <motion.div 
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="p-4 bg-emerald-950/40 border border-emerald-500/20 rounded-2xl flex items-center justify-between gap-3.5 max-w-xl mx-auto shadow-lg backdrop-blur-md"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.35)]">
-                      <FileCheck size={18} />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest font-mono leading-none mb-0.5">Real-time Stream Sync</p>
-                      <p className="text-xs text-emerald-100">
-                        Qualified as <strong className="uppercase text-white">{qualification} Lead</strong> ({formatCurrency(qualificationValue)} Value)
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[9px] font-black font-mono uppercase bg-emerald-500/25 text-emerald-300 px-2 py-0.5 rounded shadow">CRM Synced</span>
-                </motion.div>
-              )}
-
               <div ref={messagesEndRef} />
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
         </div>
 
@@ -902,7 +1630,7 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
                 >
                   {attachments.map((file, index) => (
                     <motion.div
-                      key={index}
+                      key={`${file}-${index}`}
                       className="flex items-center gap-2 text-xs bg-white/[0.04] border border-white/5 py-1.5 px-3 rounded-lg text-slate-200"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -922,165 +1650,85 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
               )}
             </AnimatePresence>
 
+            {/* Quick Suggestions Circles removed */}
+
             <div 
-              style={{
-                perspective: "1000px",
-                perspectiveOrigin: "50% 50%",
-              }}
-              className="relative w-full"
-              onMouseEnter={() => setInputHovered(true)}
-              onMouseLeave={() => setInputHovered(false)}
+              className={cn(
+                "relative w-full rounded-full transition-all duration-300 flex items-center gap-3 border bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.05] hover:border-white/20 hover:shadow-[0_0_20px_rgba(255,255,255,0.06)] px-6 py-2 min-h-[58px]",
+                inputFocused && "bg-white/[0.08] border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.06)]"
+              )}
             >
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  transformStyle: "preserve-3d",
-                  transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                }}
-              >
-                {/* 1. Shader Background Layer */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    transformStyle: "preserve-3d",
-                    transform: "translateZ(0px)",
-                    zIndex: 10,
-                    transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  }}
+              {/* Paperclip button styled with glass-icon wrapper */}
+              <div className="p-2 rounded-lg glass-icon cursor-pointer flex items-center justify-center">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                  className="hidden" 
+                  multiple 
+                />
+                <svg 
+                  onClick={handleAttachFile}
+                  className="w-4.5 h-4.5 text-[#F5F7FA] shrink-0" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="1.6"
+                  title="Attach deeds or licenses"
                 >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: "100%",
-                      borderRadius: "100px",
-                      boxShadow: inputFocused
-                        ? "0px 0px 0px 1px rgba(255, 255, 255, 0.4), 0px 0px 20px 0px rgba(255, 255, 255, 0.15), 0px 12px 24px 0px rgba(0, 0, 0, 0.4)"
-                        : inputHovered
-                          ? "0px 0px 0px 1px rgba(255, 255, 255, 0.2), 0px 12px 6px 0px rgba(0, 0, 0, 0.05), 0px 8px 5px 0px rgba(0, 0, 0, 0.1), 0px 4px 4px 0px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.2)"
-                          : "0px 0px 0px 1px rgba(255, 255, 255, 0.1), 0px 36px 14px 0px rgba(0, 0, 0, 0.02), 0px 20px 12px 0px rgba(0, 0, 0, 0.08), 0px 9px 9px 0px rgba(0, 0, 0, 0.12), 0px 2px 5px 0px rgba(0, 0, 0, 0.15)",
-                      transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease",
-                      background: "transparent",
-                    }}
-                  >
-                    <div
-                      ref={chatboxShaderRef}
-                      className="shader-container-chatbox"
-                      style={{
-                        borderRadius: "100px",
-                        overflow: "hidden",
-                        position: "relative",
-                        width: "100%",
-                        height: "100%",
-                      }}
-                    />
-                  </div>
-                </div>
+                  <path d="M21 12.5V7a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v11a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-1"/>
+                  <path d="M12 8v8M8 12h8"/>
+                </svg>
+              </div>
 
-                {/* 2. Dark Inner Plate Layer */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    transformStyle: "preserve-3d",
-                    transform: "translateZ(10px)",
-                    zIndex: 20,
-                    pointerEvents: "none",
-                    transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              <input 
+                type="text" 
+                ref={textareaRef as any}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholder="Ask Broker AI"
+                disabled={loading}
+                className="bg-transparent text-white border-none outline-none flex-1 font-medium placeholder-slate-400 z-10 py-2 text-[14px]"
+              />
+
+              {/* Command suggestions button styled with glass-icon wrapper */}
+              <div className={cn(
+                "p-2 rounded-lg glass-icon cursor-pointer flex items-center justify-center",
+                showCommandPalette && "bg-white/[0.08] border-white/20"
+              )}>
+                <svg 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCommandPalette(prev => !prev);
                   }}
+                  className="w-4.5 h-4.5 text-[#F5F7FA] shrink-0" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="1.6"
+                  title="Suggested commands"
                 >
-                  <div
-                    style={{
-                      width: "calc(100% - 4px)",
-                      height: "calc(100% - 4px)",
-                      margin: "2px",
-                      borderRadius: "100px",
-                      background: "linear-gradient(180deg, #181818 0%, #050505 100%)",
-                      boxShadow: inputFocused
-                        ? "inset 0px 2px 4px rgba(0, 0, 0, 0.5)"
-                        : "none",
-                      transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease",
-                    }}
-                  />
-                </div>
+                  <rect x="4" y="4" width="16" height="16" rx="4"/>
+                  <path d="M9 9h.01M15 9h.01M9 15h6"/>
+                </svg>
+              </div>
 
-                {/* 3. Interactive Controls Layer */}
-                <div
-                  style={{
-                    position: "relative",
-                    transformStyle: "preserve-3d",
-                    transform: "translateZ(20px)",
-                    zIndex: 30,
-                    transition: "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                    boxShadow: "none",
-                    padding: "6px 10px 6px 24px",
-                    minHeight: "58px",
+              <div className="shrink-0">
+                <button
+                  onClick={() => {
+                    if (input.trim() && !loading) {
+                      submitQuery(input);
+                    }
                   }}
-                  className="custom-field !bg-transparent !border-none !shadow-none"
+                  disabled={!input.trim() || loading}
+                  className="w-11 h-11 rounded-full flex items-center justify-center glass-icon disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95 shrink-0 text-slate-300 hover:text-white"
+                  title="Ask Broker AI"
                 >
-                  {/* Paperclip button */}
-                  <svg 
-                    onClick={handleAttachFile}
-                    className="custom-icon-btn text-[#F5F7FA]" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="1.6"
-                    title="Attach deeds or licenses"
-                  >
-                    <path d="M21 12.5V7a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v11a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-1"/>
-                    <path d="M12 8v8M8 12h8"/>
-                  </svg>
-
-                  <input 
-                    type="text" 
-                    ref={textareaRef as any}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => setInputFocused(true)}
-                    onBlur={() => setInputFocused(false)}
-                    placeholder="Ask Broker AI, or type '/' for suggested commands..."
-                    disabled={loading}
-                    className="bg-transparent text-white border-none outline-none flex-1 font-medium placeholder-slate-500 z-10 py-2 text-[14px]"
-                  />
-
-                  {/* Command suggestions button */}
-                  <svg 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowCommandPalette(prev => !prev);
-                    }}
-                    className={cn(
-                      "custom-icon-btn text-[#F5F7FA]",
-                      showCommandPalette && "opacity-100 scale-110"
-                    )} 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="1.6"
-                    title="Suggested commands"
-                  >
-                    <rect x="4" y="4" width="16" height="16" rx="4"/>
-                    <path d="M9 9h.01M15 9h.01M9 15h6"/>
-                  </svg>
-
-                  <LiquidMetalButton
-                    onClick={() => {
-                      if (input.trim() && !loading) {
-                        submitQuery(input);
-                      }
-                    }}
-                    viewMode="icon"
-                  />
-                </div>
+                  <Sparkles size={16} className="text-white/80" />
+                </button>
               </div>
             </div>
             <div className="custom-footnote">
@@ -1107,6 +1755,381 @@ export default function AIChat({ units, selectedCountry, formatCurrency, onLeadG
         )}
 
       </section>
+
+      {/* Property Details & Photo Gallery Modal Popup */}
+      <AnimatePresence>
+        {selectedPropertyForDetails && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedPropertyForDetails(null)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-lg cursor-pointer"
+            />
+
+            {/* Modal Container */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="relative w-full max-w-2xl bg-[#0f0f11] border border-white/15 rounded-3xl shadow-2xl text-white overflow-hidden flex flex-col max-h-[90vh] z-10"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 md:p-5 border-b border-white/10 bg-black/40">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                      {selectedPropertyForDetails.propertyType || "Real Estate"}
+                    </span>
+                    <span className="text-slate-400 text-xs font-mono">
+                      Ref: #{selectedPropertyForDetails.id ? selectedPropertyForDetails.id.slice(-5).toUpperCase() : "132UP"}
+                    </span>
+                  </div>
+                  <h3 className="text-lg md:text-xl font-extrabold text-white mt-1 line-clamp-1">
+                    {selectedPropertyForDetails.title}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedPropertyForDetails(null)}
+                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 scrollbar-thin">
+                
+                {/* PHOTO CAROUSEL GALLERY STAGE */}
+                {(() => {
+                  const gallery = getPropertyImageGallery(selectedPropertyForDetails);
+                  const currentPhoto = gallery[activePhotoIndex] || gallery[0];
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Main Large Photo */}
+                      <div className="w-full h-64 md:h-80 relative rounded-2xl overflow-hidden bg-black/80 border border-white/10 shadow-2xl group select-none">
+                        <img 
+                          src={currentPhoto} 
+                          alt={`Photo ${activePhotoIndex + 1}`} 
+                          className="w-full h-full object-cover transition-all duration-300"
+                          referrerPolicy="no-referrer"
+                        />
+
+                        {/* Left Navigation Arrow */}
+                        {gallery.length > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActivePhotoIndex(prev => prev > 0 ? prev - 1 : gallery.length - 1);
+                            }}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/70 hover:bg-black/90 border border-white/20 text-white flex items-center justify-center transition-all shadow-xl active:scale-95 cursor-pointer z-10"
+                            title="Previous Photo"
+                          >
+                            <ChevronLeft size={20} />
+                          </button>
+                        )}
+
+                        {/* Right Navigation Arrow */}
+                        {gallery.length > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActivePhotoIndex(prev => prev < gallery.length - 1 ? prev + 1 : 0);
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/70 hover:bg-black/90 border border-white/20 text-white flex items-center justify-center transition-all shadow-xl active:scale-95 cursor-pointer z-10"
+                            title="Next Photo"
+                          >
+                            <ChevronRight size={20} />
+                          </button>
+                        )}
+
+                        {/* Photo Counter Pill Top Right */}
+                        <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md border border-white/20 text-white px-3 py-1 rounded-full text-xs font-mono font-extrabold shadow-lg z-10">
+                          Photo {activePhotoIndex + 1} of {gallery.length}
+                        </div>
+
+                        {/* Verification Status Pill Top Left */}
+                        <div className="absolute top-3 left-3 bg-emerald-500/90 text-white px-3 py-1 rounded-full text-[11px] font-bold shadow-lg flex items-center gap-1 border border-emerald-400/30 z-10">
+                          <ShieldCheck size={14} />
+                          <span>Verified Deeds</span>
+                        </div>
+                      </div>
+
+                      {/* Thumbnail Strip */}
+                      {gallery.length > 1 && (
+                        <div className="flex gap-2 overflow-x-auto pb-1 pt-1 scrollbar-thin">
+                          {gallery.map((img, idx) => (
+                            <button
+                              key={`thumb-${idx}`}
+                              onClick={() => setActivePhotoIndex(idx)}
+                              className={cn(
+                                "w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer relative",
+                                idx === activePhotoIndex 
+                                  ? "border-emerald-400 ring-2 ring-emerald-400/50 scale-105" 
+                                  : "border-white/10 opacity-60 hover:opacity-100"
+                              )}
+                            >
+                              <img 
+                                src={img} 
+                                alt={`Thumbnail ${idx + 1}`} 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Pricing & Location Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white/[0.03] p-4 rounded-2xl border border-white/10">
+                  <div>
+                    <span className="text-xs text-slate-400 uppercase tracking-wider font-mono">Total Price</span>
+                    <h4 className="text-2xl font-black text-emerald-400 font-mono mt-0.5">
+                      {typeof selectedPropertyForDetails.price === "number" 
+                        ? formatCurrency(selectedPropertyForDetails.price) 
+                        : selectedPropertyForDetails.price}
+                    </h4>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-slate-300 text-xs">
+                    <MapPin size={16} className="text-emerald-400 shrink-0" />
+                    <span className="font-semibold">{selectedPropertyForDetails.location}</span>
+                  </div>
+                </div>
+
+                {/* Key Specifications Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center font-mono">
+                  <div className="bg-white/[0.03] border border-white/10 p-3 rounded-2xl flex flex-col items-center justify-center space-y-1">
+                    <Bed size={18} className="text-slate-400" />
+                    <span className="text-xs text-slate-400">Bedrooms</span>
+                    <span className="text-sm font-bold text-white">
+                      {selectedPropertyForDetails.details?.bedrooms || 3} Beds
+                    </span>
+                  </div>
+
+                  <div className="bg-white/[0.03] border border-white/10 p-3 rounded-2xl flex flex-col items-center justify-center space-y-1">
+                    <Bath size={18} className="text-slate-400" />
+                    <span className="text-xs text-slate-400">Bathrooms</span>
+                    <span className="text-sm font-bold text-white">
+                      {selectedPropertyForDetails.details?.bathrooms || 2} Baths
+                    </span>
+                  </div>
+
+                  <div className="bg-white/[0.03] border border-white/10 p-3 rounded-2xl flex flex-col items-center justify-center space-y-1">
+                    <Maximize size={18} className="text-slate-400" />
+                    <span className="text-xs text-slate-400">Area</span>
+                    <span className="text-sm font-bold text-white">
+                      {selectedPropertyForDetails.details?.areaSq || 220} sqm
+                    </span>
+                  </div>
+
+                  <div className="bg-white/[0.03] border border-white/10 p-3 rounded-2xl flex flex-col items-center justify-center space-y-1">
+                    <ShieldCheck size={18} className="text-emerald-400" />
+                    <span className="text-xs text-slate-400">Deeds</span>
+                    <span className="text-xs font-bold text-emerald-400">Verified</span>
+                  </div>
+                </div>
+
+                {/* Description Section */}
+                <div className="space-y-2 text-left">
+                  <h5 className="text-xs font-mono uppercase text-slate-400 font-bold tracking-wider">Property Description</h5>
+                  <p className="text-xs md:text-sm text-slate-200 leading-relaxed bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    {selectedPropertyForDetails.description || "Beautiful property located in a prime area with luxury finishes and verified ownership papers ready for instant inspection."}
+                  </p>
+                </div>
+
+                {/* Primary Project Inventory Breakdown (Multiple Unit Types & Sizes) */}
+                {(() => {
+                  const inventoryList = selectedPropertyForDetails.projectInfo?.unitInventoryList || (selectedPropertyForDetails as any).unitInventoryList;
+                  if (!Array.isArray(inventoryList) || inventoryList.length === 0) return null;
+                  
+                  return (
+                    <div className="space-y-3 text-left">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-mono uppercase text-emerald-400 font-bold tracking-wider flex items-center gap-1.5">
+                          <Layers size={14} /> Available Unit Inventory & Sizes
+                        </h5>
+                        <span className="text-[10px] font-mono bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
+                          {inventoryList.length} Unit Types
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
+                        {inventoryList.map((invItem: any, idx: number) => (
+                          <div 
+                            key={`inv-item-${idx}`}
+                            className="bg-white/[0.03] border border-white/10 hover:border-emerald-500/30 p-3 rounded-xl transition flex flex-col justify-between space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-white uppercase">{invItem.unitType || invItem.title || "Unit Variant"}</span>
+                              <span className="text-xs font-black text-emerald-400">
+                                {formatCurrency(invItem.startingPrice || invItem.price || 0)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-white/5 pt-1.5">
+                              <span>📐 {invItem.areaSq || invItem.area || "N/A"} sqm</span>
+                              <span>🛏️ {invItem.bedrooms || 3} Beds</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="p-4 md:p-5 border-t border-white/10 bg-black/60 flex flex-col sm:flex-row gap-3">
+                {(() => {
+                  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPropertyForDetails.location + ", Egypt")}`;
+                  return (
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-xs py-3 rounded-xl text-center cursor-pointer transition flex items-center justify-center gap-1.5"
+                    >
+                      🗺️ View on Google Maps
+                    </a>
+                  );
+                })()}
+
+                <button
+                  onClick={() => {
+                    const unit = selectedPropertyForDetails;
+                    setSelectedPropertyForDetails(null);
+                    setSelectedUnitForContact(unit);
+                    setIsContactModalOpen(true);
+                  }}
+                  className="flex-1 bg-white hover:bg-slate-200 text-slate-950 font-black text-xs uppercase py-3 rounded-xl flex items-center justify-center gap-2 shadow-xl transition cursor-pointer active:scale-95"
+                >
+                  <PhoneCall size={15} className="text-slate-950" />
+                  <span>Contact Agent</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Contact Agent Modal Popup */}
+      <AnimatePresence>
+        {isContactModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!submittingContact && !contactSubmitted) setIsContactModalOpen(false);
+              }}
+              className="absolute inset-0 bg-black/85 backdrop-blur-md cursor-pointer"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="relative w-full max-w-md bg-[#0d0d0d]/95 border border-white/[0.08] p-6 rounded-2xl shadow-2xl text-white select-none overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.01] rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex justify-between items-start mb-5 border-b border-white/[0.05] pb-3">
+                <div className="text-left">
+                  <h3 className="text-base font-black text-white">Contact Agent</h3>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Interested in: <span className="text-white font-bold">{selectedUnitForContact?.title || "Matched Listing"}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsContactModalOpen(false)}
+                  disabled={submittingContact}
+                  className="p-1 text-slate-500 hover:text-white transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {contactSubmitted ? (
+                <div className="py-8 text-center flex flex-col items-center justify-center space-y-3.5">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 size={24} className="animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black text-white">Request Sent Successfully!</h4>
+                    <p className="text-xs text-slate-400">Your request has been successfully sent to the property agent.</p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleContactSubmit} className="space-y-4 text-left">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      placeholder="e.g. Ahmed Ali"
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-white/40 focus:border-white/50 transition"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      placeholder="e.g. +20 1000000000"
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-white/40 focus:border-white/50 transition text-left"
+                      dir="auto"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsContactModalOpen(false)}
+                      disabled={submittingContact}
+                      className="px-4 py-2 bg-transparent hover:bg-white/[0.03] text-slate-400 hover:text-white border border-transparent font-bold text-xs rounded-xl transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingContact || !contactName.trim() || !contactPhone.trim()}
+                      className="px-5 py-2 bg-white text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md hover:bg-slate-200 transition"
+                    >
+                      {submittingContact ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        "Submit"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

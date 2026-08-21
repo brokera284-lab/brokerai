@@ -1,54 +1,237 @@
 {
   "entities": {
-    "User": {
-      "title": "User Profile",
-      "description": "Premium real estate broker profile details",
+    "AuthMetadata": {
+      "title": "Authentication Metadata",
+      "description": "Sensitive user security and provider registration metadata",
       "type": "object",
       "properties": {
-        "walletBalance": {
-          "type": "number",
-          "description": "Available wallet balance in EGP"
-        },
-        "isPremium": {
-          "type": "boolean",
-          "description": "Whether user has subscribed to the Premium CRM"
-        },
-        "email": {
-          "type": "string",
-          "description": "User email address"
-        },
-        "name": {
-          "type": "string",
-          "description": "User display name"
-        }
+        "uid": { "type": "string", "description": "Unique auth identifier matching User UID" },
+        "email": { "type": "string", "description": "Primary email address" },
+        "emailVerified": { "type": "boolean" },
+        "mfaEnabled": { "type": "boolean" },
+        "providers": { "type": "array" },
+        "lastLoginAt": { "type": "string" },
+        "createdAt": { "type": "string" }
       },
-      "required": ["walletBalance", "isPremium", "email", "name"]
+      "required": ["uid", "email", "emailVerified"]
     },
-    "Unit": {
-      "title": "Property Unit",
-      "description": "Direct owner listing with legal status check",
+    "User": {
+      "title": "UserProfile",
+      "description": "Public and internal broker/buyer profiles",
       "type": "object",
       "properties": {
+        "id": { "type": "string", "description": "User profile ID matching Auth UID" },
+        "name": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "company_admin", "broker", "buyer", "developer_admin", "admin"] },
+        "tenantId": { "type": "string", "description": "Tenant ID isolation key (null for super_admin)" },
+        "isPremium": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "role", "isPremium"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "CRM tenant isolation boundary record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "companyId": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerUid", "isActive", "createdAt"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Real estate agency or brokerage registry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "commercialRegistration": { "type": "string" },
+        "website": { "type": "string" },
+        "address": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "ownerUid": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "name", "commercialRegistration", "ownerUid", "isVerified"]
+    },
+    "Developer": {
+      "title": "Developer",
+      "description": "Real estate developer or builder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "about": { "type": "string" },
+        "establishedYear": { "type": "number" },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "isFeatured"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Residential compounds and gated developments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "developerId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "locationName": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "deliveryDate": { "type": "string" },
+        "amenities": { "type": "array" },
+        "startingPrice": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "developerId", "name", "locationName", "startingPrice"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "Primary property unit listing records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "price": { "type": "number" },
         "location": { "type": "string" },
-        "propertyType": { "type": "string" },
+        "propertyType": { "type": "string", "enum": ["apartment", "villa", "penthouse", "chalet", "townhouse"] },
         "legalPaperStatus": { "type": "string", "enum": ["verified_boost", "verified", "none"] },
+        "visibility": { "type": "string", "enum": ["private", "ai_searchable", "public"] },
+        "bedrooms": { "type": "number" },
+        "bathrooms": { "type": "number" },
+        "area": { "type": "number" },
+        "isFurnished": { "type": "boolean" },
+        "finishingType": { "type": "string" },
         "ownerName": { "type": "string" },
         "ownerPhone": { "type": "string" },
-        "ownerPercentage": { "type": "number" }
+        "brokerUid": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "sold", "rented", "pending"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["title", "description", "price", "location", "propertyType", "legalPaperStatus", "ownerName", "ownerPhone", "ownerPercentage"]
+      "required": ["id", "tenantId", "title", "price", "location", "propertyType", "legalPaperStatus", "brokerUid", "status", "visibility"]
     },
-    "Lead": {
-      "title": "Qualified Lead",
-      "description": "AI-Qualified prospective buyer details",
+    "PropertyImage": {
+      "title": "PropertyImage",
+      "description": "Property listing photographs",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
+        "url": { "type": "string" },
+        "isPrimary": { "type": "boolean" },
+        "orderIndex": { "type": "number" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["id", "url", "isPrimary", "orderIndex"]
+    },
+    "PropertyAiAnalysis": {
+      "title": "PropertyAiAnalysis",
+      "description": "Decoupled Gemini-generated financial and risk evaluations",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "investmentScore": { "type": "number" },
+        "rentalYieldEstimate": { "type": "number" },
+        "capitalAppreciationEstimate": { "type": "number" },
+        "marketComparison": { "type": "string" },
+        "legalRiskAssessment": { "type": "string" },
+        "suggestedSellingPoints": { "type": "array" },
+        "generatedAt": { "type": "string" }
+      },
+      "required": ["propertyId", "investmentScore", "rentalYieldEstimate", "generatedAt"]
+    },
+    "PropertyEmbedding": {
+      "title": "PropertyEmbedding",
+      "description": "Decoupled neural search embeddings",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "vector": { "type": "array" },
+        "textChunk": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["propertyId", "vector", "textChunk"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Chat sessions metadata between brokers and users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "participantUids": { "type": "array" },
+        "propertyId": { "type": "string" },
+        "lastMessageSnippet": { "type": "string" },
+        "lastMessageAt": { "type": "string" },
+        "unreadCounts": { "type": "object" }
+      },
+      "required": ["id", "tenantId", "participantUids", "lastMessageAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Instant messenger chat lines",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "isReadBy": { "type": "array" }
+      },
+      "required": ["id", "senderUid", "content", "createdAt"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "Property listing bookmarks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "addedAt": { "type": "string" }
+      },
+      "required": ["id", "propertyId", "addedAt"]
+    },
+    "SavedSearch": {
+      "title": "SavedSearch",
+      "description": "Subscription parameters for search notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "queryFilters": { "type": "object" },
+        "searchName": { "type": "string" },
+        "emailNotificationEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "queryFilters", "searchName", "createdAt"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "AI-Qualified real estate buyer leads available for purchase",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
-        "chatId": { "type": "string" },
+        "phoneNumber": { "type": "string" },
         "budget": { "type": "string" },
         "propertyType": { "type": "string" },
         "location": { "type": "string" },
@@ -57,60 +240,265 @@
         "value": { "type": "number" },
         "status": { "type": "string", "enum": ["available", "claimed"] },
         "claimedBy": { "type": "string" },
-        "claimedByEmail": { "type": "string" }
+        "claimedByEmail": { "type": "string" },
+        "chatId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "claimedAt": { "type": "string" }
       },
-      "required": ["name", "email", "chatId", "budget", "propertyType", "location", "legalPapersRequired", "qualification", "value", "status"]
+      "required": ["id", "tenantId", "name", "qualification", "value", "status", "chatId", "createdAt"]
     },
-    "Transaction": {
-      "title": "Wallet Transaction",
-      "description": "Pay-as-you-go financial ledger line",
+    "AnalyticsEvent": {
+      "title": "AnalyticsEvent",
+      "description": "Clickstream analytic tracking events",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "userEmail": { "type": "string" },
-        "amount": { "type": "number" },
-        "type": { "type": "string", "enum": ["credit", "charge", "refund"] },
-        "description": { "type": "string" },
-        "method": { "type": "string", "enum": ["visa", "vodafone", "etisalat", "orange", "wepay", "instapay"] }
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "eventType": { "type": "string", "enum": ["view_property", "lead_qualified", "search_executed", "favorites_added"] },
+        "propertyId": { "type": "string" },
+        "metadata": { "type": "object" },
+        "timestamp": { "type": "string" }
       },
-      "required": ["userId", "userEmail", "amount", "type", "description", "method"]
+      "required": ["id", "tenantId", "eventType", "timestamp"]
     },
-    "RefundRequest": {
-      "title": "Refund Request",
-      "description": "Broker refund claim for false lead assessment",
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notifications",
       "type": "object",
       "properties": {
-        "leadId": { "type": "string" },
-        "leadName": { "type": "string" },
-        "brokerId": { "type": "string" },
-        "brokerEmail": { "type": "string" },
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string", "enum": ["lead_alert", "wallet_alert", "favorite_update", "system_broadcast"] },
+        "link": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "body", "type", "isRead", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Auditable complaints and reporting",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "reporterUid": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["property", "lead_false_assessment", "user"] },
+        "targetId": { "type": "string" },
         "reason": { "type": "string" },
-        "status": { "type": "string", "enum": ["reporting", "reviewing", "refunded"] },
-        "amount": { "type": "number" }
+        "details": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "under_review", "resolved", "dismissed"] },
+        "createdAt": { "type": "string" }
       },
-      "required": ["leadId", "leadName", "brokerId", "brokerEmail", "reason", "status", "amount"]
+      "required": ["id", "tenantId", "reporterUid", "targetType", "targetId", "reason", "status", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Broker ratings and reviews",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "reviewerUid": { "type": "string" },
+        "targetUid": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewText": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "reviewerUid", "targetUid", "rating", "createdAt"]
+    },
+    "Location": {
+      "title": "Location",
+      "description": "Regional and compound geographical master lists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "arabicName": { "type": "string" },
+        "parentLocationId": { "type": "string" },
+        "type": { "type": "string", "enum": ["city", "district", "subdistrict", "compound"] },
+        "popularityScore": { "type": "number" }
+      },
+      "required": ["id", "name", "arabicName", "type", "popularityScore"]
+    },
+    "Amenity": {
+      "title": "Amenity",
+      "description": "Features and amenities definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "arabicName": { "type": "string" },
+        "iconName": { "type": "string" },
+        "category": { "type": "string", "enum": ["indoor", "outdoor", "services", "community"] }
+      },
+      "required": ["id", "name", "arabicName", "category"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Global administration preferences and exchange rates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "leadPriceEgp": { "type": "number" },
+        "premiumSubscriptionPriceEgp": { "type": "number" },
+        "maintenanceMode": { "type": "boolean" },
+        "exchangeRates": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "leadPriceEgp", "premiumSubscriptionPriceEgp", "maintenanceMode"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Security and operation audit logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "action": { "type": "string", "enum": ["wallet_deposit", "lead_claimed", "property_deleted", "admin_override"] },
+        "ipAddress": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "userUid", "action", "timestamp"]
+    },
+    "SearchCache": {
+      "title": "SearchCache",
+      "description": "Query filtering caches for instantaneous loads",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "queryText": { "type": "string" },
+        "resultsCount": { "type": "number" },
+        "cachedResultPropertyIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["id", "queryText", "resultsCount", "cachedResultPropertyIds", "createdAt", "expiresAt"]
+    },
+    "AiMemory": {
+      "title": "AiMemory",
+      "description": "Broker AI state-tracking context for individual buyer leads",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recentInterests": { "type": "object" },
+        "userProfileSummary": { "type": "string" },
+        "chatEngagementCount": { "type": "number" },
+        "lastInteractionAt": { "type": "string" }
+      },
+      "required": ["id", "userProfileSummary", "chatEngagementCount", "lastInteractionAt"]
     }
   },
   "firestore": {
+    "tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Multi-tenant CRM boundary records"
+    },
+    "tenants/{tenantId}/settings/{settingId}": {
+      "schema": "AppSetting",
+      "description": "Tenant-specific CRM configurations"
+    },
+    "users/{userId}/private/auth": {
+      "schema": "AuthMetadata",
+      "description": "User account verification and registration info"
+    },
     "users/{userId}": {
       "schema": "User",
-      "description": "Broker profiles"
+      "description": "User display profile data"
     },
-    "units/{unitId}": {
-      "schema": "Unit",
-      "description": "Property listings"
+    "companies/{companyId}": {
+      "schema": "Company",
+      "description": "Agency/Brokerage registrations"
+    },
+    "developers/{developerId}": {
+      "schema": "Developer",
+      "description": "Real estate developers"
+    },
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Residential gated compounds"
+    },
+    "properties/{propertyId}": {
+      "schema": "Property",
+      "description": "Property listing records"
+    },
+    "properties/{propertyId}/images/{imageId}": {
+      "schema": "PropertyImage",
+      "description": "Property listings photographs"
+    },
+    "property_ai_analysis/{propertyId}": {
+      "schema": "PropertyAiAnalysis",
+      "description": "Gemini-extracted financial analytics"
+    },
+    "property_embeddings/{propertyId}": {
+      "schema": "PropertyEmbedding",
+      "description": "Text embedding vectors for semantic search"
+    },
+    "conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Inbox session containers"
+    },
+    "conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Individual instant messaging chat rows"
+    },
+    "users/{userId}/favorites/{propertyId}": {
+      "schema": "Favorite",
+      "description": "User bookmarks"
+    },
+    "users/{userId}/saved_searches/{searchId}": {
+      "schema": "SavedSearch",
+      "description": "User subscription alerts"
     },
     "leads/{leadId}": {
       "schema": "Lead",
-      "description": "AI Qualified Leads"
+      "description": "AI-qualified leads queue"
     },
-    "transactions/{transactionId}": {
-      "schema": "Transaction",
-      "description": "Wallet transactions history"
+    "analytics_events/{eventId}": {
+      "schema": "AnalyticsEvent",
+      "description": "Analytic capture logs"
     },
-    "refunds/{refundId}": {
-      "schema": "RefundRequest",
-      "description": "Refund audit requests"
+    "users/{userId}/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User alerts inbox"
+    },
+    "reports/{reportId}": {
+      "schema": "Report",
+      "description": "Audit and false lead reports"
+    },
+    "reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Broker reviews"
+    },
+    "locations/{locationId}": {
+      "schema": "Location",
+      "description": "Pre-compiled geographical zones"
+    },
+    "amenities/{amenityId}": {
+      "schema": "Amenity",
+      "description": "Unified amenity definitions"
+    },
+    "settings/{settingId}": {
+      "schema": "AppSetting",
+      "description": "System variables and configurations"
+    },
+    "activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "System security audit trail"
+    },
+    "search_cache/{cacheId}": {
+      "schema": "SearchCache",
+      "description": "Pre-computed search results"
+    },
+    "users/{userId}/ai_memory/{memoryId}": {
+      "schema": "AiMemory",
+      "description": "Broker AI state memory"
     }
   }
 }
