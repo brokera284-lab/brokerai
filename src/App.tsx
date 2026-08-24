@@ -1,45 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { useBrokerData } from "./lib/useBrokerData";
-import { COUNTRIES } from "./lib/countries";
 import AIChat from "./components/AIChat";
 import UnitsManager from "./components/UnitsManager";
 import BrokerCRM from "./components/BrokerCRM";
-import { LiquidMetalButton } from "./components/LiquidMetalButton";
-import { 
-  Building2, Users, HelpCircle, LogOut, Sparkles, LogIn, ShieldAlert, CheckCircle2, Settings, X, MessageSquare, Menu, Plus, History, Trash2
-} from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import SignInGate from "./components/SignInGate";
 import { ChatThread } from "./types";
 import { cn } from "./lib/utils";
-// @ts-ignore
-import brokerLogo from "./broker.png";
 import AdminPanel from "./components/admin/AdminPanel";
+
+const BROKER_LOGO_URL = "https://lh3.googleusercontent.com/aida-public/AB6AXuCzAzjcZGB7fdUij4_D0Zt0TGOYHlxtPp7d_9iyNTYo4HtplaQqZrQB7CE-FnkRZGm_KWusgZfo6E60SM9euwX9yA_4LZOlOzdxqd5bcKpFniN0qrlnHJ7g9Rb20Ol6du9QDalXh8voMN2-Ogt5s4n4zi2OEglJ7BBpFtlTtnW46qSnytMCbjDB65eSsndcmV8Ki-41hUz1p2-_XLp7X-JktxvcNioC2Icbqky6KHC0Z2k4SaAGngyk44PpEFKqKkaDtg";
 
 export default function App() {
   const {
     currentUser,
     loadingUser,
-    loadingData,
     units,
     leads,
-    transactions,
     refunds,
     walletBalance,
     isPremium,
     isSuperUser,
     selectedCountry,
-    updateCountry,
-    getActiveCountryConfig,
     formatCurrency,
     loginWithGoogle,
     logout,
-    adjustWallet,
     subscribePremium,
     addUnit,
     updateUnit,
     deleteUnit,
     addLead,
     claimLead,
+    deleteLead,
     clearAllLeads,
     clearAllData,
     requestRefund,
@@ -49,6 +40,12 @@ export default function App() {
   } = useBrokerData();
 
   const [activeTab, setActiveTab] = useState<"chat" | "units" | "crm" | "history">("chat");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
   
   // Secure dynamic gate to access Super Admin panel via URL query parameter (?admin=true)
   const [isAdminOpen, setIsAdminOpen] = useState(() => {
@@ -68,29 +65,9 @@ export default function App() {
     }
   };
 
-
-  // Create a brand new session/thread data specifically for this application load
-  const [initialThreadData] = useState(() => {
-    const id = `chat_${Date.now()}`;
-    return {
-      id,
-      thread: {
-        id,
-        title: "New Property Chat",
-        messages: [],
-        extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
-        qualification: null,
-        qualificationValue: 0,
-        leadSubmitted: false
-      } as ChatThread
-    };
-  });
-
-  // Load user-isolated conversation history from localStorage
-  const storageKey = `broker_conversations_${currentUser?.uid || "anon"}`;
-  
   const [conversations, setConversations] = useState<Record<string, ChatThread>>({});
   const [activeThreadId, setActiveThreadId] = useState<string>("");
+  const [chatKey, setChatKey] = useState(0);
 
   useEffect(() => {
     if (loadingUser) return;
@@ -105,30 +82,36 @@ export default function App() {
       }
     }
     
-    // Always ensure a default thread exists
-    const threadKeys = Object.keys(parsed);
-    if (threadKeys.length === 0) {
-      const startId = `chat_${Date.now()}`;
-      parsed[startId] = {
-        id: startId,
-        title: "New Property Chat",
-        messages: [],
-        extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
-        qualification: null,
-        qualificationValue: 0,
-        leadSubmitted: false
-      };
-      setActiveThreadId(startId);
-    } else {
-      setActiveThreadId(threadKeys[0]);
+    // Preserve all existing chats with messages for the Chat History archive
+    const existingHistory: Record<string, ChatThread> = {};
+    for (const [id, chat] of Object.entries(parsed)) {
+      if (chat && chat.messages && chat.messages.length > 0) {
+        existingHistory[id] = chat;
+      }
     }
+    
+    // Every refresh opens a fresh new chat immediately
+    const freshChatId = `chat_${Date.now()}`;
+    const freshThread: ChatThread = {
+      id: freshChatId,
+      title: "New Property Chat",
+      messages: [],
+      extracted: { budget: "", propertyType: "", location: "", legalPapersRequired: null },
+      qualification: null,
+      qualificationValue: 0,
+      leadSubmitted: false
+    };
 
-    setConversations(parsed);
+    existingHistory[freshChatId] = freshThread;
+    setActiveThreadId(freshChatId);
+    setConversations(existingHistory);
+    // Persist immediately
+    localStorage.setItem(currentKey, JSON.stringify(existingHistory));
   }, [currentUser?.uid, loadingUser]);
 
   useEffect(() => {
-    if (loadingUser || !currentUser) return;
-    const currentKey = `broker_conversations_${currentUser.uid}`;
+    if (loadingUser) return;
+    const currentKey = `broker_conversations_${currentUser?.uid || "anon"}`;
     if (Object.keys(conversations).length > 0) {
       localStorage.setItem(currentKey, JSON.stringify(conversations));
     }
@@ -140,12 +123,15 @@ export default function App() {
     }
   }, [activeThreadId, currentUser?.uid]);
 
-  const [chatKey, setChatKey] = useState(0);
-  const [showRoleAlert, setShowRoleAlert] = useState(true);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // Helper to switch tabs and close sidebar only on mobile
+  const handleNavTab = (tab: "chat" | "units" | "crm" | "history") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  };
 
-  // New Chat handler that creates a fresh empty conversation thread
+  // New Chat handler that creates a fresh empty conversation thread while saving history
   const startNewChat = () => {
     const newId = `chat_${Date.now()}`;
     const newThread: ChatThread = {
@@ -158,241 +144,328 @@ export default function App() {
       leadSubmitted: false
     };
     
-    setConversations(prev => ({
-      ...prev,
-      [newId]: newThread
-    }));
+    setConversations(prev => {
+      const updated: Record<string, ChatThread> = {};
+      for (const [id, chat] of Object.entries(prev) as [string, ChatThread][]) {
+        if (chat && chat.messages && chat.messages.length > 0) {
+          updated[id] = chat;
+        }
+      }
+      updated[newId] = newThread;
+      return updated;
+    });
     setActiveThreadId(newId);
     setChatKey(prev => prev + 1);
     setActiveTab("chat");
-    setIsSidebarOpen(false);
-  };
-
-  // Recharge trigger
-  const handleRecharge = async (amount: number, method: any) => {
-    await adjustWallet(amount, "credit", `Wallet Recharge via ${method.toUpperCase()}`, method);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   };
 
   if (loadingUser) {
     return (
-      <div className="w-full h-screen bg-[#050505] flex flex-col items-center justify-center font-sans text-white">
-        <div className="text-center space-y-5 relative">
-          <div className="absolute -inset-10 bg-white/5 rounded-full blur-2xl animate-pulse" />
-          <div className="w-14 h-14 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto relative z-10" />
-          <p className="text-xs uppercase font-black tracking-widest text-slate-300 animate-pulse relative z-10 font-mono">Loading Unified Broker Workspace...</p>
+      <div className="w-full h-screen bg-[#0A0A0A] flex flex-col items-center justify-center font-sans text-[#e2e2e4]">
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 border-2 border-[#00D18E]/20 border-t-[#00D18E] rounded-full animate-spin mx-auto" />
+          <p className="text-[12px] uppercase font-secondary tracking-widest text-[#c4c7c7] animate-pulse">
+            Loading Workspace...
+          </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="w-full h-screen custom-app-bg font-sans text-slate-100 relative overflow-hidden flex flex-col p-0">
-      
-      {/* Dynamic Slide-out Sidebar Drawer */}
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div
-            key="sidebar-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 cursor-pointer"
+  const isAuthUser = Boolean(currentUser && currentUser.uid !== "guest_broker_user");
+
+  if (activeTab === "crm") {
+    if (!isAuthUser) {
+      return (
+        <div className="bg-[#0A0A0A] text-[#e2e2e4] h-screen w-full max-w-full overflow-hidden font-sans flex flex-col">
+          {/* Top Minimal Navigation Bar */}
+          <header className="flex justify-between items-center h-16 px-4 md:px-8 bg-[#121212] border-b border-[#444748] shrink-0 z-10 w-full">
+            <button
+              onClick={() => setActiveTab("chat")}
+              className="flex items-center gap-3 cursor-pointer text-left group p-1 -ml-1 rounded-xl hover:bg-white/5 transition-colors"
+            >
+              <img 
+                alt="Broker AI Logo" 
+                className="w-8 h-8 object-contain transition-transform group-hover:scale-105" 
+                src={BROKER_LOGO_URL}
+                onError={(e) => { e.currentTarget.src = "/black.png"; }}
+              />
+              <div>
+                <h1 className="text-[16px] font-semibold uppercase tracking-wider text-[#e2e2e4]">BROKER AI</h1>
+                <p className="font-secondary text-[10px] tracking-[0.1em] text-[#c4c7c7]">CRM WORKSPACE</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("chat")}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#00D18E] bg-[#00D18E]/10 border border-[#00D18E]/20 px-3.5 py-1.5 rounded-full active:scale-95 cursor-pointer hover:bg-[#00D18E]/20 transition-all min-h-[36px]"
+            >
+              <span className="material-symbols-outlined text-[16px]">chat</span>
+              <span>Back to AI Chat</span>
+            </button>
+          </header>
+
+          <main className="flex-1 overflow-y-auto w-full">
+            <SignInGate
+              type="crm"
+              onLogin={loginWithGoogle}
+              onReturnToChat={() => setActiveTab("chat")}
+              loadingAuth={loadingAuth}
+              authError={authError}
+              onClearAuthError={clearAuthError}
+            />
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-[#0A0A0A] text-[#e2e2e4] h-screen w-full max-w-full overflow-hidden font-sans">
+        <BrokerCRM
+          isPremium={isPremium}
+          isSuperUser={isSuperUser}
+          walletBalance={walletBalance}
+          leads={leads}
+          refunds={refunds}
+          onSubscribe={subscribePremium}
+          onClaimLead={claimLead}
+          onRequestRefund={requestRefund}
+          formatCurrency={formatCurrency}
+          onAddUnit={addUnit}
+          onUpdateUnit={updateUnit}
+          onDeleteUnit={deleteUnit}
+          onAddLead={addLead}
+          onDeleteLead={deleteLead}
+          onClearAllLeads={clearAllLeads}
+          onClearAllData={clearAllData}
+          units={units}
+          currentUser={currentUser}
+          onOpenChat={() => setActiveTab("chat")}
+          onLogout={logout}
+          onLogin={loginWithGoogle}
+          loadingAuth={loadingAuth}
+        />
+
+        {/* Super Admin Dashboard Overlay System */}
+        {isAdminOpen && (
+          <AdminPanel
+            currentUser={currentUser}
+            onClose={handleCloseAdmin}
+            units={units}
+            leads={leads}
+            refunds={refunds}
+            onAddUnit={addUnit}
+            onUpdateUnit={updateUnit}
+            onDeleteUnit={deleteUnit}
+            onAddLead={addLead}
+            onClaimLead={claimLead}
+            onRequestRefund={requestRefund}
+            onClearAllLeads={clearAllLeads}
+            onClearAllData={clearAllData}
           />
         )}
-        {isSidebarOpen && (
-          <motion.div
-            key="sidebar-content"
-            initial={{ x: "-100%", opacity: 0.95 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "-100%", opacity: 0.95 }}
-            transition={{ type: "spring", damping: 25, stiffness: 220 }}
-            className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#0d0d0d]/95 backdrop-blur-xl border-r border-white/[0.08] p-6 flex flex-col z-50 shadow-2xl"
-          >
-            <div className="flex items-center justify-between mb-8 select-none">
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-black tracking-wider uppercase font-sans text-white">Broker AI</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 font-mono">Workspace</span>
-              </div>
-              <button 
-                onClick={() => setIsSidebarOpen(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.05] hover:border-white/10 text-slate-400 hover:text-white transition-all cursor-pointer active:scale-95"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      </div>
+    );
+  }
 
-            {/* Sidebar items - STRICTLY CRM, new chat, and chat history ONLY with Liquid Glass design */}
-            <div className="flex-1 flex flex-col justify-start space-y-5 pt-2 items-center">
-              {/* New Chat Button */}
-              <div className="w-full flex justify-center">
-                <LiquidMetalButton
-                  width={232}
-                  label="New Chat"
-                  icon={<Plus size={16} />}
-                  onClick={startNewChat}
-                />
-              </div>
-
-              {/* CRM Tab Button */}
-              <div className="w-full flex justify-center">
-                <LiquidMetalButton
-                  width={232}
-                  label="CRM / Dashboard"
-                  icon={<Users size={16} />}
-                  onClick={() => {
-                    setActiveTab("crm");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-              </div>
-
-              {/* Chat History Tab Button */}
-              <div className="w-full flex justify-center">
-                <LiquidMetalButton
-                  width={232}
-                  label="Chat History"
-                  icon={<History size={16} />}
-                  onClick={() => {
-                    setActiveTab("history");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-              </div>
-
-              {/* Admin Panel Button (Super Admin Only) */}
-              {isSuperUser && (
-                <div className="w-full flex justify-center">
-                  <LiquidMetalButton
-                    width={232}
-                    label="Admin Panel"
-                    icon={<ShieldAlert size={16} className="text-amber-400" />}
-                    onClick={() => {
-                      setIsAdminOpen(true);
-                      setIsSidebarOpen(false);
-                      if (typeof window !== "undefined") {
-                        const url = new URL(window.location.href);
-                        url.searchParams.set("admin", "true");
-                        window.history.replaceState({}, "", url.toString());
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* User Profile & Auth Session Module */}
-            <div className="mt-auto pt-4 border-t border-white/[0.05] space-y-3.5 select-none text-left">
-              {currentUser && currentUser.uid !== "guest_broker_user" ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 px-2">
-                    {currentUser.photoURL ? (
-                      <img 
-                        src={currentUser.photoURL} 
-                        alt={currentUser.displayName || "User"} 
-                        className="w-9 h-9 rounded-full border border-white/10 object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center font-bold text-xs text-white">
-                        {(currentUser.displayName || currentUser.email || "U").charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-white truncate">
-                        {currentUser.displayName || "Authenticated User"}
-                      </p>
-                      <p className="text-[10px] text-slate-500 truncate font-mono">
-                        {currentUser.email}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      logout();
-                      setIsSidebarOpen(false);
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/30 font-bold text-xs cursor-pointer active:scale-98 transition-all"
-                  >
-                    <LogOut size={14} />
-                    Log Out
-                  </button>
-                </div>
-              ) : (
-                <div className="px-1 py-2 flex justify-center">
-                  <button
-                    onClick={async () => {
-                      await loginWithGoogle();
-                      setIsSidebarOpen(false);
-                    }}
-                    disabled={loadingAuth}
-                    className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-white/[0.12] text-white border border-white/[0.08] hover:border-white/[0.15] cursor-pointer active:scale-[0.98] transition-all backdrop-blur-md shadow-lg disabled:opacity-50"
-                    title="Sign in with Google"
-                  >
-                    {loadingAuth ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                        <span className="text-[11px] font-medium text-slate-400">Signing In...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.53-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.74-.08-1.304-.176-1.859H12.24z" />
-                        </svg>
-                        <span className="text-xs font-bold text-white">Login with Google</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="text-center mt-4 pt-4 border-t border-white/[0.05]">
-              <p className="text-[8px] text-slate-500 font-bold tracking-widest font-mono uppercase">Broker Portal Command Center</p>
-            </div>
-          </motion.div>
+  return (
+    <div className="bg-[#0A0A0A] text-[#e2e2e4] min-h-screen flex font-sans overflow-x-hidden relative">
+      
+      {/* SideNavBar (Desktop only, hidden on mobile) */}
+      <nav 
+        className={cn(
+          "hidden md:flex fixed left-0 top-0 h-full w-[263px] border-r border-[#444748] bg-[#121212] flex-col gap-6 p-6 z-50 transition-transform duration-300 ease-in-out",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
-      </AnimatePresence>
+        style={{ width: "263px" }}
+      >
+        {/* Brand Logo Area & Close Toggle */}
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="flex items-center gap-3 cursor-pointer text-left group p-1 -ml-1 rounded-xl hover:bg-white/5 transition-colors w-full"
+            title="Collapse sidebar"
+          >
+            <img 
+              alt="Broker AI Logo" 
+              className="w-10 h-10 object-contain transition-transform group-hover:scale-105" 
+              src={BROKER_LOGO_URL}
+              onError={(e) => { e.currentTarget.src = "/black.png"; }}
+            />
+            <div>
+              <h1 className="text-[20px] font-semibold uppercase tracking-wider text-[#e2e2e4]">BROKER AI</h1>
+              <p className="font-secondary text-[12px] tracking-[0.1em] text-[#c4c7c7]">WORKSPACE</p>
+            </div>
+          </button>
+        </div>
 
-      {/* Main Core View Area - full width and height as requested */}
-      <div className="w-full h-full flex-1 flex flex-col z-10 relative overflow-hidden">
-        
-        {/* Sleek Minimal App Header */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] select-none shrink-0 bg-[#050505]/95 backdrop-blur-md z-30">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="glass-icon p-2 rounded-xl cursor-pointer"
-              title="Menu"
+        {/* Navigation Links */}
+        <ul className="flex flex-col gap-2 flex-grow">
+          {/* Active / Inactive: New Chat */}
+          <li>
+            <button 
+              onClick={startNewChat}
+              className={cn(
+                "w-full flex items-center gap-4 p-4 rounded-lg font-medium transition-all text-left cursor-pointer",
+                activeTab === "chat" 
+                  ? "text-[#00D18E] bg-[#00D18E]/10" 
+                  : "text-[#c4c7c7] hover:text-[#e2e2e4] hover:bg-[#333537]"
+              )}
             >
-              <Menu size={18} />
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === "chat" ? "'FILL' 1" : "'FILL' 0" }}>add</span>
+              <span className="text-[14px]">New Chat</span>
+            </button>
+          </li>
+
+          {/* CRM Dashboard */}
+          <li>
+            <button 
+              onClick={() => handleNavTab("crm")}
+              className={cn(
+                "w-full flex items-center gap-4 p-4 rounded-lg font-medium transition-all text-left cursor-pointer",
+                activeTab === "crm" 
+                  ? "text-[#00D18E] bg-[#00D18E]/10" 
+                  : "text-[#c4c7c7] hover:text-[#e2e2e4] hover:bg-[#333537]"
+              )}
+            >
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === "crm" ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
+              <span className="text-[14px]">CRM Dashboard</span>
+            </button>
+          </li>
+
+          {/* History */}
+          <li>
+            <button 
+              onClick={() => handleNavTab("history")}
+              className={cn(
+                "w-full flex items-center gap-4 p-4 rounded-lg font-medium transition-all text-left cursor-pointer",
+                activeTab === "history" 
+                  ? "text-[#00D18E] bg-[#00D18E]/10" 
+                  : "text-[#c4c7c7] hover:text-[#e2e2e4] hover:bg-[#333537]"
+              )}
+            >
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === "history" ? "'FILL' 1" : "'FILL' 0" }}>history</span>
+              <span className="text-[14px]">History</span>
+            </button>
+          </li>
+        </ul>
+
+        {/* Footer Actions */}
+        <div className="mt-auto border-t border-[#444748]/30 pt-6 flex flex-col gap-2">
+          {currentUser?.email?.toLowerCase() === "brokera284@gmail.com" && (
+            <button 
+              onClick={() => {
+                setIsAdminOpen(true);
+                if (typeof window !== "undefined" && window.innerWidth < 768) {
+                  setIsSidebarOpen(false);
+                }
+              }}
+              className="w-full flex items-center gap-4 p-4 rounded-lg text-[#c4c7c7] hover:text-[#e2e2e4] hover:bg-[#333537] transition-colors text-left cursor-pointer"
+            >
+              <span className="material-symbols-outlined">settings</span>
+              <span className="text-[14px]">Broker Portal Command Center</span>
+            </button>
+          )}
+
+          {currentUser && currentUser.uid !== "guest_broker_user" ? (
+            <button 
+              onClick={() => {
+                logout();
+                if (typeof window !== "undefined" && window.innerWidth < 768) {
+                  setIsSidebarOpen(false);
+                }
+              }}
+              className="flex items-center gap-4 p-4 rounded-lg text-[#ffb4ab] hover:bg-[#93000a]/10 transition-colors text-left w-full cursor-pointer"
+            >
+              <span className="material-symbols-outlined">logout</span>
+              <span className="text-[14px]">Log Out ({currentUser.displayName?.split(" ")[0] || "User"})</span>
+            </button>
+          ) : (
+            <button 
+              onClick={async () => {
+                await loginWithGoogle();
+                if (typeof window !== "undefined" && window.innerWidth < 768) {
+                  setIsSidebarOpen(false);
+                }
+              }}
+              disabled={loadingAuth}
+              className="flex items-center gap-4 p-4 rounded-lg text-[#00D18E] hover:bg-[#00D18E]/10 transition-colors text-left w-full cursor-pointer"
+            >
+              <span className="material-symbols-outlined">login</span>
+              <span className="text-[14px]">{loadingAuth ? "Signing in..." : "Log In"}</span>
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {/* Main Canvas */}
+      <main 
+        className={cn(
+          "flex-grow w-full min-h-screen flex flex-col relative bg-[#0A0A0A] transition-all duration-300 ease-in-out",
+          isSidebarOpen ? "md:ml-[263px]" : "ml-0"
+        )}
+      >
+        
+        {/* TopAppBar with Logo Toggle Button without duplication */}
+        <header className="w-full h-[69px] flex justify-between items-center px-4 md:px-6 bg-transparent sticky top-0 z-40" style={{ height: "69px" }}>
+          <div className="flex items-center gap-3">
+            {/* Desktop toggle vs Mobile brand mark */}
+            <button 
+              onClick={() => {
+                if (typeof window !== "undefined" && window.innerWidth >= 768) {
+                  setIsSidebarOpen(prev => !prev);
+                }
+              }}
+              className="flex items-center p-1.5 -ml-1.5 rounded-xl hover:bg-white/5 transition-all cursor-pointer group"
+              title="Broker AI"
+            >
+              <img 
+                alt="Broker AI Logo" 
+                className="w-8 h-8 object-contain transition-transform group-hover:scale-105" 
+                src={BROKER_LOGO_URL}
+                onError={(e) => { e.currentTarget.src = "/black.png"; }}
+              />
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-wider uppercase font-mono text-white">
-              Broker Portal
-            </span>
+          <div className="flex items-center gap-3 md:gap-4">
+            <div 
+              onClick={() => {
+                if (!currentUser || currentUser.uid === "guest_broker_user") {
+                  loginWithGoogle();
+                } else {
+                  setActiveTab("crm");
+                }
+              }}
+              className="w-8 h-8 rounded-full bg-[#333537] border border-[#444748] overflow-hidden cursor-pointer hover:border-[#00D18E] transition-colors flex items-center justify-center"
+              title={currentUser?.displayName || "Profile"}
+            >
+              {currentUser?.photoURL ? (
+                <img src={currentUser.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="material-symbols-outlined text-[#c4c7c7] text-[18px]">person</span>
+              )}
+            </div>
           </div>
         </header>
-        
-        {/* CORE VIEWS RENDER STAGE - Displays views conditionally */}
-        <main className="flex-1 w-full h-full flex flex-col relative overflow-hidden">
-          {authError && (
-            <div className="mx-6 mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs flex items-center justify-between gap-3 shadow-lg select-none">
-              <div className="flex items-center gap-2">
-                <ShieldAlert size={16} className="text-red-400 shrink-0" />
-                <span>{authError}</span>
-              </div>
-              <button 
-                onClick={clearAuthError}
-                className="text-red-400 hover:text-white transition cursor-pointer font-bold px-2 py-1 hover:bg-white/5 rounded-lg text-[10px]"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+
+        {/* View Switcher */}
+        {authError && (
+          <div className="mx-4 md:mx-6 mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-[#ffb4ab] text-xs flex items-center justify-between gap-3 select-none">
+            <span>{authError}</span>
+            <button 
+              onClick={clearAuthError}
+              className="text-[#ffb4ab] hover:text-white transition cursor-pointer font-bold px-2 py-1 hover:bg-white/5 rounded-lg text-[10px]"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col w-full pb-20 md:pb-0">
           {activeTab === "chat" ? (
             <AIChat 
               key={chatKey} 
@@ -401,47 +474,33 @@ export default function App() {
               selectedCountry={selectedCountry}
               formatCurrency={formatCurrency}
               onLeadGenerated={addLead} 
-              onLogoClick={() => setIsSidebarOpen(true)}
+              onLogoClick={() => setIsSidebarOpen(prev => !prev)}
               conversations={conversations}
               setConversations={setConversations}
               activeThreadId={activeThreadId}
               setActiveThreadId={setActiveThreadId}
+              onNewChat={startNewChat}
             />
-          ) : activeTab === "crm" ? (
-            <div className="flex-1 w-full h-full relative overflow-hidden bg-[#050505]">
-              <BrokerCRM
-                isPremium={isPremium}
-                isSuperUser={isSuperUser}
-                walletBalance={walletBalance}
-                leads={leads}
-                refunds={refunds}
-                onSubscribe={subscribePremium}
-                onClaimLead={claimLead}
-                onRequestRefund={requestRefund}
-                formatCurrency={formatCurrency}
-                onAddUnit={addUnit}
-                onUpdateUnit={updateUnit}
-                onDeleteUnit={deleteUnit}
-                onAddLead={addLead}
-                onClearAllLeads={clearAllLeads}
-                onClearAllData={clearAllData}
-                units={units}
-                currentUser={currentUser}
-                onOpenChat={() => setActiveTab("chat")}
-                onLogout={logout}
-              />
-            </div>
           ) : activeTab === "history" ? (
-            <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#050505]">
-              <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+            !isAuthUser ? (
+              <SignInGate
+                type="history"
+                onLogin={loginWithGoogle}
+                onReturnToChat={() => setActiveTab("chat")}
+                loadingAuth={loadingAuth}
+                authError={authError}
+                onClearAuthError={clearAuthError}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#0A0A0A] p-4 md:p-6">
                 <div className="max-w-4xl w-full mx-auto space-y-6">
                   <div className="text-left space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-bold uppercase tracking-widest font-mono">
-                      <History size={14} className="text-white/40" />
+                    <div className="flex items-center gap-2 text-xs text-[#c4c7c7] font-bold uppercase tracking-widest font-secondary">
+                      <span className="material-symbols-outlined text-[16px]">history</span>
                       Saved Conversations
                     </div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">Property Conversations History</h2>
-                    <p className="text-sm text-slate-400">Track and manage your past broker real-estate assistant sessions.</p>
+                    <h2 className="text-xl md:text-2xl font-bold text-[#e2e2e4] tracking-tight">Property Conversations History</h2>
+                    <p className="text-xs md:text-sm text-[#c4c7c7]">Track and manage your past broker real-estate assistant sessions.</p>
                   </div>
 
                   {(() => {
@@ -450,17 +509,17 @@ export default function App() {
 
                     if (activeChatsList.length === 0) {
                       return (
-                        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-3xl border border-white/[0.05] bg-white/[0.01]">
-                          <div className="w-16 h-16 rounded-full bg-white/[0.03] flex items-center justify-center text-slate-500 mb-4 border border-white/[0.05]">
-                            <History size={28} />
+                        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-[#444748] bg-[#121212]">
+                          <div className="w-16 h-16 rounded-full bg-[#1e2021] flex items-center justify-center text-[#c4c7c7] mb-4 border border-[#444748]">
+                            <span className="material-symbols-outlined text-[32px]">history</span>
                           </div>
-                          <h3 className="text-lg font-bold text-white mb-2">No Chat History</h3>
-                          <p className="text-sm text-slate-400 max-w-sm mb-6">
+                          <h3 className="text-lg font-bold text-[#e2e2e4] mb-2">No Chat History</h3>
+                          <p className="text-sm text-[#c4c7c7] max-w-sm mb-6">
                             Start a new conversation with Broker AI to analyze property requirements and budget metrics.
                           </p>
                           <button
                             onClick={startNewChat}
-                            className="bg-white text-slate-950 font-bold text-xs px-6 py-3 rounded-xl hover:bg-slate-200 transition-all cursor-pointer active:scale-95"
+                            className="bg-[#00D18E] text-[#0A0A0A] font-bold text-xs px-6 py-3 rounded-lg hover:bg-[#00D18E]/90 transition-all cursor-pointer active:scale-95"
                           >
                             Start a Chat Now
                           </button>
@@ -478,17 +537,17 @@ export default function App() {
                           return (
                             <div 
                               key={id || chat.id || `chat-${index}`}
-                              className="group p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15] hover:shadow-[0_4px_20px_rgba(255,255,255,0.02)] transition-all flex flex-col justify-between space-y-4"
+                              className="group p-4 md:p-5 rounded-xl border border-[#444748] bg-[#121212] hover:bg-[#1e2021] hover:border-[#00D18E]/40 transition-all flex flex-col justify-between space-y-4"
                             >
                               <div className="space-y-3">
                                 <div className="flex items-start justify-between gap-3">
-                                  <h3 className="text-base font-bold text-slate-100 group-hover:text-white transition-colors line-clamp-1">
+                                  <h3 className="text-sm md:text-base font-bold text-[#e2e2e4] group-hover:text-[#00D18E] transition-colors line-clamp-1">
                                     {chat.title}
                                   </h3>
                                   
                                   {chat.qualification && (
                                     <span className={cn(
-                                      "text-[10px] font-black uppercase tracking-wider font-mono px-2 py-0.5 rounded-full border shrink-0",
+                                      "text-[10px] font-bold uppercase tracking-wider font-secondary px-2 py-0.5 rounded border shrink-0",
                                       chat.qualification === "hot" && "bg-rose-500/10 text-rose-400 border-rose-500/20",
                                       chat.qualification === "warm" && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                                       chat.qualification === "cold" && "bg-blue-500/10 text-blue-400 border-blue-500/20"
@@ -498,32 +557,32 @@ export default function App() {
                                   )}
                                 </div>
 
-                                <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed text-left font-sans" dir="auto">
+                                <p className="text-xs text-[#c4c7c7] line-clamp-2 leading-relaxed text-left font-sans">
                                   {formattedMsg}
                                 </p>
 
                                 {/* Extracted Badges */}
                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                   {chat.extracted?.budget && (
-                                    <span className="text-[10px] font-semibold bg-white/[0.04] border border-white/[0.06] text-slate-300 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] font-medium bg-[#1e2021] border border-[#444748] text-[#c4c7c7] px-2 py-0.5 rounded">
                                       💰 {chat.extracted.budget}
                                     </span>
                                   )}
                                   {chat.extracted?.location && (
-                                    <span className="text-[10px] font-semibold bg-white/[0.04] border border-white/[0.06] text-slate-300 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] font-medium bg-[#1e2021] border border-[#444748] text-[#c4c7c7] px-2 py-0.5 rounded">
                                       📍 {chat.extracted.location}
                                     </span>
                                   )}
                                   {chat.extracted?.propertyType && (
-                                    <span className="text-[10px] font-semibold bg-white/[0.04] border border-white/[0.06] text-slate-300 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] font-medium bg-[#1e2021] border border-[#444748] text-[#c4c7c7] px-2 py-0.5 rounded">
                                       🏢 {chat.extracted.propertyType}
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] shrink-0">
-                                <span className="text-[10px] font-mono text-slate-500 font-bold">
+                              <div className="flex items-center justify-between pt-3 border-t border-[#444748]/30 shrink-0">
+                                <span className="text-[10px] font-secondary text-[#c4c7c7]">
                                   {chat.messages.length} messages
                                 </span>
 
@@ -539,10 +598,10 @@ export default function App() {
                                         setActiveThreadId("current");
                                       }
                                     }}
-                                    className="p-2 rounded-xl bg-transparent hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                                    className="p-2 rounded-lg bg-transparent hover:bg-rose-500/10 text-[#c4c7c7] hover:text-rose-400 transition-all cursor-pointer active:scale-95"
                                     title="Delete Conversation"
                                   >
-                                    <Trash2 size={14} />
+                                    <span className="material-symbols-outlined text-[18px]">delete</span>
                                   </button>
 
                                   {/* Continue Chat */}
@@ -551,7 +610,7 @@ export default function App() {
                                       setActiveThreadId(id);
                                       setActiveTab("chat");
                                     }}
-                                    className="px-3.5 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white text-slate-300 hover:text-slate-950 border border-white/[0.1] hover:border-white transition-all text-xs font-bold cursor-pointer active:scale-95"
+                                    className="px-3 py-1.5 rounded-lg bg-[#1e2021] hover:bg-[#00D18E] text-[#e2e2e4] hover:text-[#0A0A0A] border border-[#444748] hover:border-[#00D18E] transition-all text-xs font-semibold cursor-pointer active:scale-95"
                                   >
                                     Continue
                                   </button>
@@ -565,23 +624,66 @@ export default function App() {
                   })()}
                 </div>
               </div>
-            </div>
+            )
           ) : (
-            <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#050505]">
-              <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-                <div className="max-w-7xl w-full mx-auto">
-                  <UnitsManager
-                    units={units}
-                    onAddUnit={addUnit}
-                    formatCurrency={formatCurrency}
-                  />
-                </div>
+            <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-[#0A0A0A] p-4 md:p-6">
+              <div className="max-w-7xl w-full mx-auto">
+                <UnitsManager
+                  units={units}
+                  onAddUnit={addUnit}
+                  formatCurrency={formatCurrency}
+                />
               </div>
             </div>
           )}
-        </main>
+        </div>
 
-      </div>
+        {/* Mobile App Bottom Navigation Bar */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-t border-[#444748]/50 pb-safe px-3 py-1.5 flex items-center justify-around select-none shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+          <button
+            onClick={() => handleNavTab("chat")}
+            className={cn(
+              "flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer active:scale-90",
+              activeTab === "chat" ? "text-[#00D18E]" : "text-[#c4c7c7] hover:text-white"
+            )}
+          >
+            <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: activeTab === "chat" ? "'FILL' 1" : "'FILL' 0" }}>chat</span>
+            <span className="text-[10px] font-medium tracking-tight mt-0.5">Chat</span>
+          </button>
+
+          <button
+            onClick={() => handleNavTab("crm")}
+            className={cn(
+              "flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer active:scale-90",
+              activeTab === "crm" ? "text-[#00D18E]" : "text-[#c4c7c7] hover:text-white"
+            )}
+          >
+            <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: activeTab === "crm" ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
+            <span className="text-[10px] font-medium tracking-tight mt-0.5">CRM</span>
+          </button>
+
+          <button
+            onClick={startNewChat}
+            className="flex flex-col items-center justify-center -mt-4 cursor-pointer active:scale-90 group"
+          >
+            <div className="w-11 h-11 rounded-full bg-[#00D18E] text-[#0A0A0A] flex items-center justify-center shadow-lg shadow-[#00D18E]/25 transition-transform group-hover:scale-105 border-2 border-[#0A0A0A]">
+              <span className="material-symbols-outlined text-[24px] font-bold">add</span>
+            </div>
+            <span className="text-[10px] font-bold text-[#00D18E] tracking-tight mt-1">New</span>
+          </button>
+
+          <button
+            onClick={() => handleNavTab("history")}
+            className={cn(
+              "flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer active:scale-90",
+              activeTab === "history" ? "text-[#00D18E]" : "text-[#c4c7c7] hover:text-white"
+            )}
+          >
+            <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: activeTab === "history" ? "'FILL' 1" : "'FILL' 0" }}>history</span>
+            <span className="text-[10px] font-medium tracking-tight mt-0.5">History</span>
+          </button>
+        </nav>
+      </main>
 
       {/* Super Admin Dashboard Overlay System */}
       {isAdminOpen && (
@@ -604,3 +706,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -204,26 +204,26 @@ function GoogleMapContent({
   return (
     <>
       {/* Top Controls Overlay */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-col gap-2" dir="ltr">
-        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-          <div className="relative flex-1">
+      <div className="absolute top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 z-[1000] flex flex-col gap-1.5 sm:gap-2" dir="ltr">
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5 sm:gap-2">
+          <div className="relative flex-1 min-w-0">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search location, landmark or district (e.g. Mall of Arabia, SODIC, 90th St)..."
-              className="w-full h-11 pl-10 pr-4 bg-zinc-950/90 border border-white/20 focus:border-emerald-500 rounded-xl text-xs font-sans text-white placeholder-zinc-400 backdrop-blur-xl outline-none transition-all shadow-2xl"
+              placeholder="Search location or district (e.g. SODIC, Zayed)..."
+              className="w-full h-9 sm:h-11 pl-8 sm:pl-10 pr-3 sm:pr-4 bg-zinc-950/90 border border-white/20 focus:border-emerald-500 rounded-xl text-[11px] sm:text-xs font-sans text-white placeholder-zinc-400 backdrop-blur-xl outline-none transition-all shadow-2xl"
               dir="ltr"
             />
-            <Search size={16} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+            <Search size={14} className="absolute top-1/2 left-2.5 sm:left-3.5 -translate-y-1/2 text-zinc-400 pointer-events-none sm:scale-110" />
           </div>
 
           <button
             type="submit"
             disabled={isSearching}
-            className="h-11 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xl transition-all cursor-pointer shrink-0"
+            className="h-9 sm:h-11 px-2.5 sm:px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-bold text-[11px] sm:text-xs rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-xl transition-all cursor-pointer shrink-0"
           >
-            {isSearching ? <Loader2 size={14} className="animate-spin" /> : "Search"}
+            {isSearching ? <Loader2 size={13} className="animate-spin" /> : "Search"}
           </button>
 
           <button
@@ -231,29 +231,29 @@ function GoogleMapContent({
             onClick={handleLocateMe}
             disabled={isLocating}
             title="Locate Current Position"
-            className="h-11 px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl transition-all cursor-pointer shrink-0"
+            className="h-9 sm:h-11 px-2.5 sm:px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl transition-all cursor-pointer shrink-0"
           >
-            {isLocating ? <Loader2 size={14} className="animate-spin text-emerald-400" /> : <Navigation size={15} />}
+            {isLocating ? <Loader2 size={13} className="animate-spin text-emerald-400" /> : <Navigation size={14} />}
           </button>
         </form>
 
         {/* Quick Area Presets */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5" dir="ltr">
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar py-0.5" dir="ltr">
           {EGYPT_PRESETS.map(preset => (
             <button
               key={preset.name}
               type="button"
               onClick={() => handleSelectPreset(preset)}
-              className="px-3 py-1 bg-zinc-950/80 hover:bg-emerald-950/80 border border-white/15 hover:border-emerald-500/50 rounded-full text-[11px] font-medium text-zinc-200 hover:text-emerald-300 backdrop-blur-md whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0 flex items-center gap-1"
+              className="px-2.5 sm:px-3 py-1 bg-zinc-950/80 hover:bg-emerald-950/80 border border-white/15 hover:border-emerald-500/50 rounded-full text-[10px] sm:text-[11px] font-medium text-zinc-200 hover:text-emerald-300 backdrop-blur-md whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0 flex items-center gap-1"
             >
-              <MapPin size={11} className="text-emerald-400" />
+              <MapPin size={10} className="text-emerald-400" />
               <span>{preset.name}</span>
             </button>
           ))}
         </div>
 
         {searchError && (
-          <div className="bg-rose-950/90 border border-rose-500/30 px-3 py-1.5 rounded-lg text-xs text-rose-200 shadow-xl backdrop-blur-md">
+          <div className="bg-rose-950/90 border border-rose-500/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs text-rose-200 shadow-xl backdrop-blur-md">
             {searchError}
           </div>
         )}
@@ -281,17 +281,17 @@ function GoogleMapContent({
       </Map>
 
       {/* Bottom HUD Overlay */}
-      <div className="absolute bottom-3 right-3 left-3 z-[1000] flex items-end justify-between gap-3 pointer-events-none" dir="ltr">
-        <div className="bg-zinc-950/90 border border-white/20 backdrop-blur-xl px-4 py-2.5 rounded-xl shadow-2xl max-w-[320px] pointer-events-auto">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">GPS LOCATION COORDS</span>
+      <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 left-2 sm:left-3 z-[1000] flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-1.5 sm:gap-3 pointer-events-none" dir="ltr">
+        <div className="bg-zinc-950/90 border border-white/20 backdrop-blur-xl px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl shadow-2xl max-w-full sm:max-w-[320px] pointer-events-auto">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[8.5px] sm:text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">GPS COORDS</span>
           </div>
-          <span className="text-xs font-mono font-bold text-white tracking-wider block">
+          <span className="text-[11px] sm:text-xs font-mono font-bold text-white tracking-wider block">
             {markerPos.lat.toFixed(6)}, {markerPos.lng.toFixed(6)}
           </span>
           {formattedAddress && (
-            <span className="text-[10px] text-zinc-300 block truncate mt-0.5">{formattedAddress}</span>
+            <span className="text-[9.5px] sm:text-[10px] text-zinc-300 block truncate mt-0.5">{formattedAddress}</span>
           )}
         </div>
 
@@ -299,10 +299,10 @@ function GoogleMapContent({
           href={googleMapsExternalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="pointer-events-auto bg-zinc-900 hover:bg-zinc-800 border border-white/20 text-white text-xs font-semibold px-4 py-2.5 rounded-xl backdrop-blur-xl flex items-center gap-2 shadow-2xl transition-all"
+          className="pointer-events-auto bg-zinc-900 hover:bg-zinc-800 border border-white/20 text-white text-[11px] sm:text-xs font-semibold px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl backdrop-blur-xl flex items-center justify-center gap-1.5 sm:gap-2 shadow-2xl transition-all"
         >
           <span>Open in Google Maps</span>
-          <ExternalLink size={13} className="text-emerald-400" />
+          <ExternalLink size={12} className="text-emerald-400" />
         </a>
       </div>
     </>
@@ -534,26 +534,26 @@ function LeafletFallbackMap({
   return (
     <div className={`relative rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden ${className || "h-[450px] w-full"} flex flex-col`}>
       {/* Top Controls Bar */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-col gap-2" dir="ltr">
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
-          <div className="relative flex-1">
+      <div className="absolute top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 z-[1000] flex flex-col gap-1.5 sm:gap-2" dir="ltr">
+        <form onSubmit={handleSearch} className="flex items-center gap-1.5 sm:gap-2">
+          <div className="relative flex-1 min-w-0">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search location, landmark or district (e.g. Mall of Arabia, SODIC, Sheikh Zayed)..."
-              className="w-full h-11 pl-10 pr-4 bg-zinc-950/90 border border-white/20 focus:border-emerald-500 rounded-xl text-xs font-sans text-white placeholder-zinc-400 backdrop-blur-xl outline-none transition-all shadow-2xl"
+              placeholder="Search location or district (e.g. SODIC, Zayed)..."
+              className="w-full h-9 sm:h-11 pl-8 sm:pl-10 pr-3 sm:pr-4 bg-zinc-950/90 border border-white/20 focus:border-emerald-500 rounded-xl text-[11px] sm:text-xs font-sans text-white placeholder-zinc-400 backdrop-blur-xl outline-none transition-all shadow-2xl"
               dir="ltr"
             />
-            <Search size={16} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+            <Search size={14} className="absolute top-1/2 left-2.5 sm:left-3.5 -translate-y-1/2 text-zinc-400 pointer-events-none sm:scale-110" />
           </div>
 
           <button
             type="submit"
             disabled={isSearching}
-            className="h-11 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xl transition-all cursor-pointer shrink-0"
+            className="h-9 sm:h-11 px-2.5 sm:px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-bold text-[11px] sm:text-xs rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-xl transition-all cursor-pointer shrink-0"
           >
-            {isSearching ? <Loader2 size={14} className="animate-spin" /> : "Search"}
+            {isSearching ? <Loader2 size={13} className="animate-spin" /> : "Search"}
           </button>
 
           <button
@@ -561,70 +561,70 @@ function LeafletFallbackMap({
             onClick={handleLocateMe}
             disabled={isLocating}
             title="Locate Current Position"
-            className="h-11 px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl transition-all cursor-pointer shrink-0"
+            className="h-9 sm:h-11 px-2.5 sm:px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl transition-all cursor-pointer shrink-0"
           >
-            {isLocating ? <Loader2 size={14} className="animate-spin text-emerald-400" /> : <Navigation size={15} />}
+            {isLocating ? <Loader2 size={13} className="animate-spin text-emerald-400" /> : <Navigation size={14} />}
           </button>
         </form>
 
         {/* Quick Location Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5" dir="ltr">
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar py-0.5" dir="ltr">
           {EGYPT_PRESETS.map(preset => (
             <button
               key={preset.name}
               type="button"
               onClick={() => handleSelectPreset(preset)}
-              className="px-3 py-1 bg-zinc-950/85 hover:bg-emerald-950/80 border border-white/15 hover:border-emerald-500/50 rounded-full text-[11px] font-medium text-zinc-200 hover:text-emerald-300 backdrop-blur-md whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0 flex items-center gap-1"
+              className="px-2.5 sm:px-3 py-1 bg-zinc-950/85 hover:bg-emerald-950/80 border border-white/15 hover:border-emerald-500/50 rounded-full text-[10px] sm:text-[11px] font-medium text-zinc-200 hover:text-emerald-300 backdrop-blur-md whitespace-nowrap transition-all shadow-md cursor-pointer shrink-0 flex items-center gap-1"
             >
-              <MapPin size={11} className="text-emerald-400" />
+              <MapPin size={10} className="text-emerald-400" />
               <span>{preset.name}</span>
             </button>
           ))}
         </div>
 
         {searchError && (
-          <div className="bg-rose-950/90 border border-rose-500/30 px-3 py-1.5 rounded-lg text-xs text-rose-200 shadow-xl backdrop-blur-md">
+          <div className="bg-rose-950/90 border border-rose-500/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs text-rose-200 shadow-xl backdrop-blur-md">
             {searchError}
           </div>
         )}
       </div>
 
       {/* Floating Left Side Controls (Custom Zoom + Tile Switcher) */}
-      <div className="absolute top-28 left-3 z-[1000] flex flex-col gap-1.5" dir="ltr">
+      <div className="absolute top-24 sm:top-28 left-2 sm:left-3 z-[1000] flex flex-col gap-1 sm:gap-1.5" dir="ltr">
         <button
           type="button"
           onClick={handleZoomIn}
           title="Zoom In"
-          className="w-9 h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer"
+          className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer"
         >
-          <Plus size={16} />
+          <Plus size={15} />
         </button>
         <button
           type="button"
           onClick={handleZoomOut}
           title="Zoom Out"
-          className="w-9 h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer"
+          className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer"
         >
-          <Minus size={16} />
+          <Minus size={15} />
         </button>
         <button
           type="button"
           onClick={() => setTileMode(prev => prev === "dark" ? "satellite" : "dark")}
           title={tileMode === "dark" ? "Switch to Satellite Mode" : "Switch to Dark Mode"}
-          className="w-9 h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer mt-1"
+          className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-emerald-400 rounded-xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer mt-0.5 sm:mt-1"
         >
-          <Layers size={15} />
+          <Layers size={14} />
         </button>
       </div>
 
       {/* Map Canvas */}
-      <div className="w-full flex-1 min-h-[350px]" ref={mapContainerRef} />
+      <div className="w-full flex-1 min-h-[300px] sm:min-h-[350px]" ref={mapContainerRef} />
 
       {/* Bottom HUD Overlay */}
-      <div className="absolute bottom-3 right-3 left-3 z-[1000] flex items-end justify-between gap-3 pointer-events-none" dir="ltr">
-        <div className="bg-zinc-950/90 border border-white/20 backdrop-blur-xl px-4 py-2.5 rounded-xl shadow-2xl pointer-events-auto">
-          <span className="text-[9px] font-mono font-bold text-emerald-400 block tracking-widest uppercase">GPS LOCATION</span>
-          <span className="text-xs font-mono font-bold text-white tracking-wider">
+      <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 left-2 sm:left-3 z-[1000] flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-1.5 sm:gap-3 pointer-events-none" dir="ltr">
+        <div className="bg-zinc-950/90 border border-white/20 backdrop-blur-xl px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl shadow-2xl max-w-full sm:max-w-[320px] pointer-events-auto">
+          <span className="text-[8.5px] sm:text-[9px] font-mono font-bold text-emerald-400 block tracking-widest uppercase">GPS LOCATION</span>
+          <span className="text-[11px] sm:text-xs font-mono font-bold text-white tracking-wider">
             {currentCoords.lat.toFixed(6)}, {currentCoords.lng.toFixed(6)}
           </span>
         </div>
@@ -633,10 +633,10 @@ function LeafletFallbackMap({
           href={googleMapsExternalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="pointer-events-auto bg-zinc-900 hover:bg-zinc-800 border border-white/20 text-white text-xs font-semibold px-4 py-2.5 rounded-xl backdrop-blur-xl flex items-center gap-2 shadow-2xl transition-all"
+          className="pointer-events-auto bg-zinc-900 hover:bg-zinc-800 border border-white/20 text-white text-[11px] sm:text-xs font-semibold px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl backdrop-blur-xl flex items-center justify-center gap-1.5 sm:gap-2 shadow-2xl transition-all"
         >
           <span>Open in Google Maps</span>
-          <ExternalLink size={13} className="text-emerald-400" />
+          <ExternalLink size={12} className="text-emerald-400" />
         </a>
       </div>
     </div>

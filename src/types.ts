@@ -61,6 +61,7 @@ export interface Unit {
     downPayment?: number;
     installmentYears?: number;
     monthlyInstallment?: number;
+    maintenancePercent?: number;
     interestFree?: "Yes" | "No";
     deliveryStatus: string;
   };
@@ -78,7 +79,7 @@ export interface Unit {
     customAmenities?: string[];
     pricePerSqm?: number;
     unitInventoryList?: Array<{ id?: string; unitType: string; areaSq: number; bedrooms: number; startingPrice: number }>;
-    paymentPlansList?: Array<{ id?: string; downPaymentPercent: number; installmentYears: number; deliveryYears: number; notes?: string }>;
+    paymentPlansList?: Array<{ id?: string; downPaymentPercent: number; installmentYears: number; deliveryYears: number; maintenancePercent?: number; notes?: string }>;
     taxCardImage?: string;
     isDataTruthCertified?: boolean;
   };
@@ -149,7 +150,7 @@ export interface Lead {
   name: string;
   email: string;
   phone?: string;
-  chatId: string;
+  chatId?: string;
   budget: string;
   propertyType: string;
   location: string;
@@ -162,8 +163,14 @@ export interface Lead {
   interestedUnitTitle?: string;
   interestedUnitId?: string;
   propertyId?: string;
+  projectId?: string;
+  developerId?: string;
+  companyId?: string;
   tenantId?: string;
   propertyUploaderId?: string;
+  assignedAgentId?: string;
+  preferredViewingDate?: string | null;
+  source?: string;
   createdAt?: any;
 }
 
@@ -172,6 +179,9 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp?: any;
+  suggestedUnits?: Unit[];
+  photos?: string[];
+  referencedUnitId?: string;
 }
 
 export interface ChatThread {

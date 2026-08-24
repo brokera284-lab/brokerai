@@ -98,13 +98,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Welcome Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/35 p-6 rounded-2xl border border-white/[0.05]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 bg-slate-900/35 p-4 sm:p-6 rounded-2xl border border-white/[0.05]">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <ClipboardList className="text-amber-500" size={22} />
-            Super Admin Control Center
+          <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+            <ClipboardList className="text-amber-500 shrink-0" size={20} />
+            <span>Super Admin Control Center</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             Logged in as <span className="text-white font-semibold">{currentUser?.email}</span>. Live connection is established.
@@ -112,25 +112,25 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         </div>
         <button
           onClick={loadDashboardData}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.1] text-xs font-semibold text-white hover:bg-white/[0.1] active:scale-95 transition-all cursor-pointer"
+          className="flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/[0.1] text-xs font-semibold text-white hover:bg-white/[0.1] active:scale-95 transition-all cursor-pointer w-full sm:w-auto shrink-0"
         >
           <RefreshCw size={14} className="text-amber-500" />
-          Refresh Core Metrics
+          <span>Refresh Core Metrics</span>
         </button>
       </div>
 
       {/* Numerical Metrics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1: Users */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Users</span>
             <Users className="text-blue-500" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.totalUsers}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.totalUsers}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Active in Auth Directory <ArrowRight size={10} />
           </p>
@@ -139,13 +139,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 2: Companies */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Companies</span>
             <Building2 className="text-purple-500" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.totalCompanies}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.totalCompanies}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Registered brokerages <ArrowRight size={10} />
           </p>
@@ -154,13 +154,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 3: Properties */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Properties</span>
             <Home className="text-emerald-500" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.totalProperties}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.totalProperties}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Active property listings <ArrowRight size={10} />
           </p>
@@ -169,13 +169,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 4: Leads */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Leads</span>
             <Sparkles className="text-amber-500" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.totalLeads}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.totalLeads}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Pipeline lead assets <ArrowRight size={10} />
           </p>
@@ -184,13 +184,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 5: Active Subs */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Active Subs</span>
             <Award className="text-purple-400" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.activeSubs}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.activeSubs}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Licensed premium seats <ArrowRight size={10} />
           </p>
@@ -199,13 +199,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 6: Expired Subs */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Inactive Subs</span>
             <Layers className="text-slate-400" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{metrics.expiredSubs}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{metrics.expiredSubs}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Paused or cancelled <ArrowRight size={10} />
           </p>
@@ -214,13 +214,13 @@ export default function AdminDashboard({ currentUser, formatCurrency, formatDate
         {/* Metric 7: Revenue */}
         <button 
           onClick={() => onNavigate("users")}
-          className="bg-slate-900/30 hover:bg-slate-900/40 p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 md:col-span-2 cursor-pointer"
+          className="bg-slate-900/30 hover:bg-slate-900/40 p-4 sm:p-5 rounded-2xl border border-white/[0.05] text-left transition-all hover:-translate-y-0.5 sm:col-span-2 cursor-pointer active:scale-98"
         >
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2 sm:mb-3">
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Turnover Revenue (EGP)</span>
             <Coins className="text-amber-500" size={18} />
           </div>
-          <div className="text-2xl font-bold text-white font-mono">{formatCurrency(metrics.monthlyRevenue)}</div>
+          <div className="text-xl sm:text-2xl font-bold text-white font-mono">{formatCurrency(metrics.monthlyRevenue)}</div>
           <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             Processed payments ledger <ArrowRight size={10} />
           </p>

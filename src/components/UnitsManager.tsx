@@ -567,18 +567,18 @@ export default function UnitsManager({ units, onAddUnit, formatCurrency }: Units
     <div className="space-y-6 text-slate-100">
       
       {/* HEADER SECTION */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
         <div>
-          <h2 className="text-xl font-black text-white tracking-tight font-display bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight font-display bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
             High Quality Units Registry
           </h2>
-          <p className="text-sm text-slate-400">Verify, catalog, and boost high-value real estate properties</p>
+          <p className="text-xs sm:text-sm text-slate-400">Verify, catalog, and boost high-value real estate properties</p>
         </div>
         <button
           onClick={() => {
             setShowAddModal(true);
           }}
-          className="glass-btn font-bold px-5 py-3 rounded-full flex items-center gap-2 transition cursor-pointer"
+          className="w-full sm:w-auto glass-btn font-bold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-full flex items-center justify-center gap-2 transition cursor-pointer text-xs sm:text-sm active:scale-95"
         >
           <Plus size={16} />
           <span>Upload Property</span>
@@ -586,10 +586,10 @@ export default function UnitsManager({ units, onAddUnit, formatCurrency }: Units
       </div>
 
       {/* TOP SUMMARY ROW / D3 CHART PANEL */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* RECHARTS COMPONENT */}
-        <div className="lg:col-span-1 bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+        <div className="lg:col-span-1 bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-xs font-black uppercase tracking-wider text-blue-400 mb-1 flex items-center gap-2 font-mono">
               <BarChart2 size={14} />
@@ -640,14 +640,14 @@ export default function UnitsManager({ units, onAddUnit, formatCurrency }: Units
         </div>
 
         {/* METRICS & CONSTRAINTS CARDS */}
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           
           {/* Owner Relations */}
-          <div className="bg-gradient-to-br from-[#0c102a] to-[#040612] border border-white/5 text-white rounded-2xl p-5 flex flex-col justify-between shadow-md relative overflow-hidden">
+          <div className="bg-gradient-to-br from-[#0c102a] to-[#040612] border border-white/5 text-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-md relative overflow-hidden">
             <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl" />
             <div>
               <span className="bg-blue-500/20 text-blue-300 text-[10px] uppercase font-mono px-2.5 py-1 rounded">System Metric</span>
-              <h3 className="text-2xl font-black mt-3">90% Direct Owner</h3>
+              <h3 className="text-xl sm:text-2xl font-black mt-3">90% Direct Owner</h3>
               <p className="text-xs text-slate-300 mt-2 leading-relaxed font-medium">
                 Broker AI filters guarantee a maximum 10% third-party agency dilution. You work directly with primary title holders.
               </p>
@@ -659,10 +659,10 @@ export default function UnitsManager({ units, onAddUnit, formatCurrency }: Units
           </div>
 
           {/* Boosting benefits card */}
-          <div className="bg-black/40 border border-white/5 text-white rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div className="bg-black/40 border border-white/5 text-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm">
             <div>
               <span className="bg-blue-600/10 text-blue-400 border border-blue-500/15 text-[10px] uppercase font-bold px-2 py-1 rounded font-mono">Promotion Engine</span>
-              <h3 className="text-base font-black mt-3 text-white">Legal Verification Boost</h3>
+              <h3 className="text-sm sm:text-base font-black mt-3 text-white">Legal Verification Boost</h3>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed">
                 Units registered with verified legal licensing and boosted status receive <strong>6x the view visibility</strong> in recommendations list streams.
               </p>
@@ -687,21 +687,21 @@ export default function UnitsManager({ units, onAddUnit, formatCurrency }: Units
         return (
           <div className="space-y-4">
             {units.length > 0 && (
-              <div className="bg-blue-950/40 border border-blue-500/20 rounded-2xl p-3 flex items-center justify-between text-xs text-blue-200">
+              <div className="bg-blue-950/40 border border-blue-500/20 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-blue-200">
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
                   <span>
-                    <strong>Priority Display Active:</strong> Units with scanned & verified legal papers appear first. 
-                    <span className="text-blue-300 ml-1">(Legal paper scan is optional, providing priority boost)</span>
+                    <strong>Priority Display:</strong> Verified legal units appear first. 
+                    <span className="text-blue-300 ml-1 hidden sm:inline">(Legal paper scan gives priority boost)</span>
                   </span>
                 </div>
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2.5 py-1 rounded-full font-mono font-bold shrink-0">
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2.5 py-1 rounded-full font-mono font-bold shrink-0 self-end sm:self-auto">
                   {units.filter(u => u.legalPaperStatus === "verified_boost" || u.legalPaperStatus === "verified").length} / {units.length} Prioritized
                 </span>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {sortedUnits.length === 0 ? (
                 <div className="col-span-full bg-black/30 border-2 border-dashed border-white/10 rounded-3xl p-12 text-center text-slate-300">
                   <Building className="mx-auto text-slate-500 mb-3 animate-pulse" size={36} />

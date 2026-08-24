@@ -231,6 +231,7 @@
         "tenantId": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
+        "phone": { "type": "string" },
         "phoneNumber": { "type": "string" },
         "budget": { "type": "string" },
         "propertyType": { "type": "string" },
@@ -242,10 +243,20 @@
         "claimedBy": { "type": "string" },
         "claimedByEmail": { "type": "string" },
         "chatId": { "type": "string" },
+        "interestedUnitId": { "type": "string" },
+        "interestedUnitTitle": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "developerId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "propertyUploaderId": { "type": "string" },
+        "assignedAgentId": { "type": "string" },
+        "preferredViewingDate": { "type": "string" },
+        "source": { "type": "string" },
         "createdAt": { "type": "string" },
         "claimedAt": { "type": "string" }
       },
-      "required": ["id", "tenantId", "name", "qualification", "value", "status", "chatId", "createdAt"]
+      "required": ["id", "tenantId", "name", "qualification", "value", "status", "createdAt"]
     },
     "AnalyticsEvent": {
       "title": "AnalyticsEvent",

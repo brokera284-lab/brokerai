@@ -116,23 +116,23 @@ export default function AdminPanel({
   ] as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
-      {/* Side Navigation Rail */}
-      <aside className="w-64 border-r border-white/[0.05] bg-slate-900/40 flex flex-col justify-between p-4 shrink-0">
-        <div className="space-y-6">
+    <div className="fixed inset-0 z-50 flex flex-col md:flex-row bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+      {/* Side / Top Navigation Rail */}
+      <aside className="w-full md:w-64 border-b md:border-b-0 md:border-r border-white/[0.05] bg-slate-900/40 flex flex-row md:flex-col justify-between items-center md:items-stretch p-3 md:p-4 shrink-0">
+        <div className="flex md:flex-col items-center md:items-stretch gap-3 md:gap-6 w-full md:w-auto justify-between">
           {/* Platform Header */}
-          <div className="flex items-center gap-2.5 px-2">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20">
-              <ShieldCheck size={20} />
+          <div className="flex items-center gap-2.5 px-1 md:px-2">
+            <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20 shrink-0">
+              <ShieldCheck size={18} />
             </div>
             <div>
               <h1 className="text-xs font-black tracking-widest text-white uppercase">Broker AI</h1>
-              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest font-mono">Super Admin</span>
+              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest font-mono hidden sm:inline">Super Admin</span>
             </div>
           </div>
 
           {/* Nav list */}
-          <nav className="space-y-1">
+          <nav className="flex md:flex-col items-center gap-1">
             {tabs.map((t) => {
               const Icon = t.icon;
               const isActive = activeTab === t.id;
@@ -140,14 +140,14 @@ export default function AdminPanel({
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                  className={`flex items-center gap-2 md:gap-3 px-2.5 md:px-3 py-1.5 md:py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                     isActive 
                       ? "bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/10" 
                       : "text-slate-400 hover:text-white hover:bg-white/[0.02]"
                   }`}
                 >
-                  <Icon size={16} />
-                  {t.label}
+                  <Icon size={14} />
+                  <span className="text-[11px] md:text-xs">{t.label}</span>
                 </button>
               );
             })}
@@ -155,7 +155,7 @@ export default function AdminPanel({
         </div>
 
         {/* Footer actions */}
-        <div className="space-y-3 pt-4 border-t border-white/[0.03]">
+        <div className="hidden md:block space-y-3 pt-4 border-t border-white/[0.03]">
           <div className="px-2">
             <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-mono">Operator:</span>
             <span className="block text-[10px] text-slate-300 font-bold truncate" title={currentUser?.email}>{currentUser?.email}</span>
@@ -168,21 +168,30 @@ export default function AdminPanel({
             Exit Admin System
           </button>
         </div>
+
+        {/* Mobile Exit Button */}
+        <button
+          onClick={onClose}
+          className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+          title="Exit Admin"
+        >
+          <LogOut size={16} />
+        </button>
       </aside>
 
       {/* Main Panel Content Stage */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-950">
-        <header className="h-16 border-b border-white/[0.05] flex items-center justify-between px-8 bg-slate-900/15">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <header className="h-12 md:h-16 border-b border-white/[0.05] flex items-center justify-between px-4 md:px-8 bg-slate-900/15 shrink-0">
+          <div className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-slate-400">
             Path: <span className="text-white">Admin / {activeTab.toUpperCase()}</span>
           </div>
-          <div className="flex items-center gap-4 text-xs font-bold text-slate-500 font-mono">
-            <span>PLATFORM: CO_INGRESS_SECURE</span>
+          <div className="flex items-center gap-2 md:gap-4 text-[10px] md:text-xs font-bold text-slate-500 font-mono">
+            <span className="hidden sm:inline">PLATFORM: SECURE</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           </div>
         </header>
 
-        <div className="p-8 max-w-7xl w-full mx-auto">
+        <div className="p-3.5 sm:p-6 md:p-8 max-w-7xl w-full mx-auto pb-24 md:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

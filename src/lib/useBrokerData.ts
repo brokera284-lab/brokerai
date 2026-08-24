@@ -18,7 +18,8 @@ import {
   signInWithPopup,
   signOut,
   User,
-  onAuthStateChanged
+  onAuthStateChanged,
+  cleanForFirestore
 } from "./firebase";
 import { Unit, Lead, ChatSession, Transaction, RefundRequest } from "../types";
 import { COUNTRIES, autoDetectCountry } from "./countries";
@@ -79,7 +80,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
-export const DEFAULT_UNITS: Unit[] = [];
+import { DEFAULT_UNITS } from "./defaultUnits";
+
+export { DEFAULT_UNITS };
 
 export function useBrokerData() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -115,7 +118,7 @@ export function useBrokerData() {
     if (loadingUser) return;
 
     const uid = currentUser?.uid || null;
-    const isSuper = currentUser?.email === "brokera284@gmail.com";
+    const isSuper = currentUser?.email?.toLowerCase() === "brokera284@gmail.com";
     const isAuthUser = auth.currentUser !== null && !!uid && uid !== "guest_broker_user";
 
     // 1. GLOBAL PROPERTY INVENTORY SYNC (AI Discovery & Marketplace)
@@ -132,7 +135,7 @@ export function useBrokerData() {
         }
       });
       list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
-      setUnits(list);
+      setUnits(list.length > 0 ? list : DEFAULT_UNITS);
       setLoadingData(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, "units");
@@ -352,7 +355,7 @@ export function useBrokerData() {
     let success = false;
     if (isAuthUser && !usingLocalFallback) {
       try {
-        await addDoc(collection(db, "transactions"), {
+        const cleaned = cleanForFirestore({
           userId: uid,
           userEmail: currentUser?.email || "guest_broker@brokerai.com",
           amount,
@@ -361,6 +364,7 @@ export function useBrokerData() {
           method,
           createdAt: serverTimestamp()
         });
+        await addDoc(collection(db, "transactions"), cleaned);
         success = true;
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `transactions`);
@@ -446,10 +450,11 @@ export function useBrokerData() {
 
     if (isAuthUser && !usingLocalFallback) {
       try {
-        await addDoc(collection(db, "units"), {
+        const cleaned = cleanForFirestore({
           ...enrichedUnit,
           createdAt: serverTimestamp()
         });
+        await addDoc(collection(db, "units"), cleaned);
         success = true;
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, "units");
@@ -473,7 +478,8 @@ export function useBrokerData() {
     if (isAuthUser && !usingLocalFallback) {
       try {
         const unitRef = doc(db, "units", unitId);
-        await updateDoc(unitRef, updatedFields);
+        const cleaned = cleanForFirestore(updatedFields);
+        await updateDoc(unitRef, cleaned);
         success = true;
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `units/${unitId}`);
@@ -512,10 +518,11 @@ export function useBrokerData() {
     let success = false;
     if (!usingLocalFallback) {
       try {
-        await addDoc(collection(db, "leads"), {
+        const cleaned = cleanForFirestore({
           ...lead,
           createdAt: serverTimestamp()
         });
+        await addDoc(collection(db, "leads"), cleaned);
         success = true;
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, "leads");
@@ -564,39 +571,68 @@ export function useBrokerData() {
     }
   };
 
-  const clearAllLeads = async () => {
-    let success = false;
-    const uid = currentUser?.uid || "guest_broker_user";
-    const isSuper = currentUser?.email === "brokera284@gmail.com";
+  const deleteLead = async (leadId: string) => {
+    if (!leadId) return;
     const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
 
-    // Standard users only clear their own leads. Superusers clear all.
-    const leadsToClear = leads.filter((lead) => {
-      if (isSuper) return true;
-      return lead.propertyUploaderId === uid;
-    });
+    // Immediate UI update
+    setLeads((prev) => prev.filter((l) => l.id !== leadId));
 
     if (isAuthUser && !usingLocalFallback) {
       try {
-        const promises = leadsToClear.map((lead) => {
-          if (!lead.id) {
-            console.warn("Skipping lead deletion due to missing document ID:", lead);
-            return Promise.resolve();
-          }
-          const leadRef = doc(db, "leads", lead.id);
-          return deleteDoc(leadRef);
-        });
-        await Promise.all(promises);
-        success = true;
+        const leadRef = doc(db, "leads", leadId);
+        await deleteDoc(leadRef);
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, "leads");
+        console.warn("Firestore delete lead error:", err);
+        handleFirestoreError(err, OperationType.DELETE, `leads/${leadId}`);
         setUsingLocalFallback(true);
       }
     }
+  };
 
-    if (!success || usingLocalFallback || !isAuthUser) {
-      const idsToClear = leadsToClear.map(l => l.id);
-      setLeads((prev) => prev.filter((l) => !idsToClear.includes(l.id)));
+  const clearAllLeads = async (customLeadIds?: string[]) => {
+    const uid = currentUser?.uid || "guest_broker_user";
+    const isSuper = currentUser?.email?.toLowerCase() === "brokera284@gmail.com";
+    const isAuthUser = auth.currentUser !== null && !!currentUser && currentUser.uid !== "guest_broker_user";
+    const userTenantId = currentUser?.tenantId || (currentUser?.email ? currentUser.email.split("@")[1]?.replace(/[^a-zA-Z0-9]/g, "_") : "default_tenant");
+
+    let leadsToClear = leads;
+    if (customLeadIds && Array.isArray(customLeadIds) && customLeadIds.length > 0) {
+      leadsToClear = leads.filter(l => customLeadIds.includes(l.id));
+    } else if (!isSuper && isAuthUser) {
+      leadsToClear = leads.filter((lead) => {
+        const isMine = lead.propertyUploaderId === uid ||
+                       (lead.tenantId && lead.tenantId === userTenantId) ||
+                       lead.claimedBy === uid ||
+                       lead.assignedAgentId === uid ||
+                       lead.developerId === uid ||
+                       lead.companyId === uid;
+        return isMine;
+      });
+      // Fallback: If no leads match strict filter but user is viewing leads in their CRM session, clear all currently active leads
+      if (leadsToClear.length === 0 && leads.length > 0) {
+        leadsToClear = leads;
+      }
+    }
+
+    const idsToClear = leadsToClear.map(l => l.id).filter(Boolean);
+    if (idsToClear.length === 0) return;
+
+    // Immediately remove from UI state
+    setLeads((prev) => prev.filter((l) => !idsToClear.includes(l.id)));
+
+    if (isAuthUser && !usingLocalFallback) {
+      try {
+        const promises = idsToClear.map((leadId) => {
+          const leadRef = doc(db, "leads", leadId);
+          return deleteDoc(leadRef);
+        });
+        await Promise.all(promises);
+      } catch (err) {
+        console.warn("Firestore clear leads error:", err);
+        handleFirestoreError(err, OperationType.DELETE, "leads");
+        setUsingLocalFallback(true);
+      }
     }
   };
 
@@ -659,7 +695,7 @@ export function useBrokerData() {
 
     if (isAuthUser && !usingLocalFallback) {
       try {
-        const refundRef = await addDoc(collection(db, "refunds"), {
+        const cleaned = cleanForFirestore({
           leadId,
           leadName,
           brokerId: uid,
@@ -669,6 +705,7 @@ export function useBrokerData() {
           amount,
           createdAt: serverTimestamp()
         });
+        const refundRef = await addDoc(collection(db, "refunds"), cleaned);
         refundId = refundRef.id;
         success = true;
       } catch (err) {
@@ -759,7 +796,7 @@ export function useBrokerData() {
     return `${formattedVal} ${config.symbol}`;
   };
 
-  const isSuperUser = currentUser?.email === "brokera284@gmail.com";
+  const isSuperUser = currentUser?.email?.toLowerCase() === "brokera284@gmail.com";
 
   return {
     currentUser,
@@ -786,6 +823,7 @@ export function useBrokerData() {
     deleteUnit,
     addLead,
     claimLead,
+    deleteLead,
     clearAllLeads,
     clearAllData,
     requestRefund,

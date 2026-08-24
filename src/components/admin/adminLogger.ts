@@ -1,5 +1,5 @@
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { db, cleanForFirestore } from "../../lib/firebase";
 
 export async function writeAdminLog(
   userUid: string,
@@ -9,17 +9,18 @@ export async function writeAdminLog(
   target: string = "N/A"
 ) {
   try {
-    await addDoc(collection(db, "activity_logs"), {
-      userUid,
-      userEmail,
-      action,
-      details,
-      target,
+    const cleaned = cleanForFirestore({
+      userUid: userUid || "system",
+      userEmail: userEmail || "system@brokerai.com",
+      action: action || "info",
+      details: details || "",
+      target: target || "N/A",
       timestamp: serverTimestamp(),
       status: "success",
       ipAddress: "127.0.0.1",
       userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Node-Server"
     });
+    await addDoc(collection(db, "activity_logs"), cleaned);
   } catch (error) {
     console.error("Failed to write activity log:", error);
   }

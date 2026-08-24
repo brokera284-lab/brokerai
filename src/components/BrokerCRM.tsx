@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Unit, Lead, RefundRequest } from "../types";
 import PropertyUploadWizard from "./PropertyUploadWizard";
 import { 
-  LayoutDashboard, Building2, Users, BarChart3, Settings, HelpCircle, LogOut,
+  LayoutDashboard, Building2, Users, BarChart3, Settings, HelpCircle, LogOut, LogIn,
   Search, Bell, Plus, MoreVertical, TrendingUp, ShieldCheck, Lock, Unlock,
   Mail, Phone, DollarSign, MapPin, Trash2, Edit3, Flame, Sun, Snowflake,
   Bed, Bath, X, CheckCircle2, AlertTriangle, Eye, ArrowUpDown, ChevronLeft,
@@ -25,12 +25,15 @@ interface BrokerCRMProps {
   onUpdateUnit: (unitId: string, updatedFields: Partial<Omit<Unit, "id" | "createdAt">>) => Promise<void>;
   onDeleteUnit: (unitId: string) => Promise<void>;
   onAddLead: (lead: Omit<Lead, "id" | "createdAt">) => Promise<void>;
+  onDeleteLead?: (leadId: string) => Promise<void>;
   onClearAllLeads?: () => Promise<void>;
   onClearAllData?: () => Promise<void>;
   units: Unit[];
   currentUser?: any;
   onOpenChat?: () => void;
   onLogout?: () => void;
+  onLogin?: () => void;
+  loadingAuth?: boolean;
 }
 
 type TabType = "dashboard" | "inventory" | "leads" | "analytics" | "settings";
@@ -49,12 +52,15 @@ export default function BrokerCRM({
   onUpdateUnit,
   onDeleteUnit,
   onAddLead,
+  onDeleteLead,
   onClearAllLeads,
   onClearAllData,
   units,
   currentUser,
   onOpenChat,
-  onLogout
+  onLogout,
+  onLogin,
+  loadingAuth = false
 }: BrokerCRMProps) {
   // Navigation tab matching CRM.md: dashboard (Overview), inventory, leads, analytics, settings
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
@@ -82,6 +88,12 @@ export default function BrokerCRM({
   const [deletingUnitId, setDeletingUnitId] = useState<string | null>(null);
   const [viewingUnitPhotos, setViewingUnitPhotos] = useState<Unit | null>(null);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
+
+  // Clear & Deletion Modals state
+  const [confirmClearLeadsModal, setConfirmClearLeadsModal] = useState(false);
+  const [confirmClearAllDataModal, setConfirmClearAllDataModal] = useState(false);
+  const [isClearingLeads, setIsClearingLeads] = useState(false);
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
 
   // Selected Lead details & Unlock modal
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -155,7 +167,10 @@ export default function BrokerCRM({
   const userLeads = leads.filter((lead) => {
     const isMine = lead.propertyUploaderId === currentUid || 
                    (lead.tenantId && lead.tenantId === currentTenantId) ||
-                   lead.claimedBy === currentUid;
+                   lead.claimedBy === currentUid ||
+                   lead.assignedAgentId === currentUid ||
+                   lead.developerId === currentUid ||
+                   lead.companyId === currentUid;
     const canSee = isSuperUser ? (leadFilter === "all" ? true : isMine) : isMine;
     return canSee;
   });
@@ -262,15 +277,32 @@ export default function BrokerCRM({
         )}
       </AnimatePresence>
 
+      {/* MOBILE BACKDROP OVERLAY */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
       {/* SideNavBar - CLONED FROM CRM.md */}
       <nav className={`
-        fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#131313] border-r border-[#444748] py-5 px-3 flex flex-col justify-between shrink-0 transition-transform duration-300
+        fixed md:static inset-y-0 left-0 z-50 w-72 max-w-[85vw] md:w-64 bg-[#131313] border-r border-[#444748] py-5 px-3.5 flex flex-col justify-between shrink-0 transition-transform duration-300 shadow-2xl md:shadow-none
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
         <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-10 h-10 rounded-full overflow-hidden border border-[#444748] shrink-0 bg-[#2a2a2a] flex items-center justify-center">
+          <div 
+            onClick={() => onOpenChat && onOpenChat()}
+            className="flex items-center gap-3 px-2 cursor-pointer group"
+            title="Return to AI Chat Assistant"
+          >
+            <div className="w-10 h-10 rounded-full overflow-hidden border border-[#444748] shrink-0 bg-[#2a2a2a] flex items-center justify-center group-hover:border-[#00D18E] transition-colors">
               <img 
                 alt="Broker AI Logo" 
                 className="w-full h-full object-cover" 
@@ -278,13 +310,13 @@ export default function BrokerCRM({
               />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-white tracking-tight truncate">Broker AI</h1>
+              <h1 className="text-base font-bold text-white tracking-tight truncate group-hover:text-[#00D18E] transition-colors">Broker AI</h1>
               <p className="text-[11px] text-[#c4c7c8] truncate font-mono">
                 {isSuperUser ? "CRM - Admin" : isPremium ? "CRM - Pro" : "CRM - Free"}
               </p>
             </div>
             <button 
-              onClick={() => setMobileMenuOpen(false)} 
+              onClick={(e) => { e.stopPropagation(); setMobileMenuOpen(false); }} 
               className="md:hidden ml-auto p-1 text-[#c4c7c8] hover:text-white"
             >
               <X size={18} />
@@ -391,7 +423,7 @@ export default function BrokerCRM({
             <span>Support</span>
           </button>
 
-          {onLogout && (
+          {currentUser && currentUser.uid !== "guest_broker_user" ? (
             <button
               onClick={onLogout}
               className="w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-[#ffb4aa] hover:bg-[#93000a]/40 hover:text-[#ffdad6] transition-colors cursor-pointer"
@@ -399,28 +431,48 @@ export default function BrokerCRM({
               <LogOut size={18} />
               <span>Sign Out</span>
             </button>
+          ) : (
+            <button
+              onClick={onLogin}
+              disabled={loadingAuth}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-[#00D18E] hover:bg-[#00D18E]/10 transition-colors cursor-pointer"
+            >
+              <LogIn size={18} />
+              <span>{loadingAuth ? "Signing in..." : "Sign In"}</span>
+            </button>
           )}
         </div>
       </nav>
 
       {/* Main Content Area Wrapper */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 w-full max-w-full h-screen overflow-hidden">
         
         {/* TopAppBar - CLONED FROM CRM.md */}
-        <header className="flex justify-between items-center h-16 px-4 md:px-8 bg-[#1c1b1b] border-b border-[#444748] shrink-0 z-10 w-full">
-          {/* Mobile Menu Toggle */}
-          <button 
-            onClick={() => setMobileMenuOpen(true)} 
-            className="md:hidden text-[#c4c7c8] hover:text-white mr-3 cursor-pointer p-1"
-          >
-            <LayoutDashboard size={20} />
-          </button>
+        <header className="flex justify-between items-center h-16 px-3.5 sm:px-6 md:px-8 bg-[#1c1b1b] border-b border-[#444748] shrink-0 z-10 w-full max-w-full min-w-0">
+          {/* Mobile Menu Toggle & Chat Link */}
+          <div className="flex items-center gap-2 md:hidden shrink-0">
+            <button 
+              onClick={() => setMobileMenuOpen(true)} 
+              className="text-[#c4c7c8] hover:text-white p-2 rounded-lg hover:bg-white/5 cursor-pointer active:scale-95 min-h-[40px] min-w-[40px] flex items-center justify-center"
+              title="Open Menu"
+            >
+              <LayoutDashboard size={20} />
+            </button>
 
-          {/* Brand focus on mobile */}
-          <div className="md:hidden text-base font-bold text-white flex-1">Broker AI</div>
+            {onOpenChat && (
+              <button
+                onClick={onOpenChat}
+                className="flex items-center gap-1 text-[11px] font-semibold text-[#00D18E] bg-[#00D18E]/10 border border-[#00D18E]/20 px-2.5 py-1.5 rounded-full active:scale-95 cursor-pointer min-h-[34px]"
+                title="Return to AI Chat"
+              >
+                <MessageSquare size={13} />
+                <span>Chat</span>
+              </button>
+            )}
+          </div>
 
           {/* Global Search Bar */}
-          <div className="hidden md:flex flex-1 max-w-md relative">
+          <div className="hidden md:flex flex-1 max-w-md relative mx-4">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#c4c7c8]/60" />
             <input
               type="text"
@@ -443,12 +495,12 @@ export default function BrokerCRM({
           </div>
 
           {/* Actions on Right */}
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
             {/* Notification Bell */}
             <div className="relative">
               <button 
                 onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
-                className="text-[#c4c7c8] hover:text-white p-2 relative cursor-pointer rounded-full hover:bg-white/5 transition-colors"
+                className="text-[#c4c7c8] hover:text-white p-2 relative cursor-pointer rounded-full hover:bg-white/5 transition-colors active:scale-95 min-h-[38px] min-w-[38px] flex items-center justify-center"
               >
                 <Bell size={18} />
                 {hotLeadsCount > 0 && (
@@ -485,54 +537,83 @@ export default function BrokerCRM({
             </div>
 
             {/* Profile badge */}
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-[#444748] bg-[#2a2a2a] flex items-center justify-center text-xs font-bold text-white">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-[#444748] bg-[#2a2a2a] flex items-center justify-center text-xs font-bold text-white shrink-0">
               {currentUser?.email ? currentUser.email.charAt(0).toUpperCase() : "B"}
             </div>
 
             {/* Primary Action Button - Cloned from CRM.md */}
             <button 
               onClick={openUploadModal}
-              className="bg-white text-[#131313] font-bold text-xs py-1.5 px-4 rounded-full border border-white hover:bg-opacity-90 transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
+              className="bg-white text-[#131313] font-bold text-xs py-1.5 px-3 sm:px-4 rounded-full border border-white hover:bg-opacity-90 transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-md active:scale-95 shrink-0 min-h-[36px]"
             >
-              <div className="w-5 h-5 rounded-full bg-[#131313] text-white flex items-center justify-center">
-                <Plus size={14} className="font-bold" />
+              <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-[#131313] text-white flex items-center justify-center shrink-0">
+                <Plus size={12} className="font-bold" />
               </div>
-              <span>Upload new property</span>
+              <span className="hidden sm:inline">Upload new property</span>
+              <span className="sm:hidden font-bold">Upload</span>
             </button>
           </div>
         </header>
 
+        {/* Mobile Horizontal Quick Navigation Strip */}
+        <div className="md:hidden flex items-center gap-2 px-3.5 py-2.5 bg-[#121212] border-b border-[#444748]/50 overflow-x-auto no-scrollbar shrink-0 touch-pan-x w-full max-w-full">
+          {[
+            { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+            { id: "inventory", label: `Inventory (${totalUnitsCount})`, icon: Building2 },
+            { id: "leads", label: `Leads (${totalLeadsCount})`, icon: Users },
+            { id: "analytics", label: "Analytics", icon: BarChart3 },
+            { id: "settings", label: "Settings", icon: Settings },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 active:scale-95 min-h-[38px] ${
+                  isActive 
+                    ? "bg-white text-black font-bold shadow-sm" 
+                    : "bg-white/5 text-[#c4c7c8] hover:text-white border border-white/5"
+                }`}
+              >
+                <Icon size={14} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Main Scrollable Canvas */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#050505] scrollbar-thin">
-          <div className="max-w-7xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-5 md:p-8 bg-[#050505] scrollbar-thin pb-24 md:pb-8 touch-scroll w-full max-w-full min-w-0">
+          <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 md:space-y-8 w-full min-w-0">
             
             {/* VIEW 1: DASHBOARD (OVERVIEW) */}
             {activeTab === "dashboard" && (
               <>
                 {/* Page Header */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4">
                   <div>
                     <div className="flex items-center gap-2 text-[#c4c7c8] mb-1">
                       <span className="text-[11px] font-mono font-bold tracking-wider uppercase">Broker AI Workspace</span>
                     </div>
-                    <h2 className="text-3xl font-extrabold text-white tracking-tight">Overview</h2>
-                    <p className="text-[#c4c7c8] mt-1 text-sm">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Overview</h2>
+                    <p className="text-[#c4c7c8] mt-1 text-xs sm:text-sm">
                       Monitor your portfolio performance, recent leads, and active transactions.
                     </p>
                   </div>
                 </div>
 
                 {/* Stats Bento Grid (3 Cards) - CLONED FROM CRM.md */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                   {/* Stat Card 1: Total Units */}
-                  <div className="bg-[#131313] border border-[#444748] p-5 rounded flex flex-col justify-between h-32 relative overflow-hidden group">
+                  <div className="bg-[#131313] border border-[#444748] p-4 sm:p-5 rounded flex flex-col justify-between min-h-[112px] sm:h-32 relative overflow-hidden group">
                     <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                     <div className="flex justify-between items-start z-10">
                       <span className="text-[#c4c7c8] text-[11px] uppercase tracking-wider font-bold">Total Units</span>
                       <Building2 size={20} className="text-[#c4c7c8]" />
                     </div>
-                    <div className="z-10 flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-white font-mono">{totalUnitsCount}</span>
+                    <div className="z-10 flex items-baseline gap-2 mt-2 sm:mt-0">
+                      <span className="text-2xl sm:text-3xl font-bold text-white font-mono">{totalUnitsCount}</span>
                       {verifiedUnitsCount > 0 && (
                         <span className="text-[#4ade80] text-xs flex items-center font-bold">
                           <TrendingUp size={14} className="mr-0.5" /> {verifiedUnitsCount} Verified
@@ -542,14 +623,14 @@ export default function BrokerCRM({
                   </div>
 
                   {/* Stat Card 2: Total Leads */}
-                  <div className="bg-[#131313] border border-[#444748] p-5 rounded flex flex-col justify-between h-32 relative overflow-hidden group">
+                  <div className="bg-[#131313] border border-[#444748] p-4 sm:p-5 rounded flex flex-col justify-between min-h-[112px] sm:h-32 relative overflow-hidden group">
                     <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                     <div className="flex justify-between items-start z-10">
                       <span className="text-[#c4c7c8] text-[11px] uppercase tracking-wider font-bold">Total Leads</span>
                       <Users size={20} className="text-[#c4c7c8]" />
                     </div>
-                    <div className="z-10 flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-white font-mono">{totalLeadsCount}</span>
+                    <div className="z-10 flex items-baseline gap-2 mt-2 sm:mt-0">
+                      <span className="text-2xl sm:text-3xl font-bold text-white font-mono">{totalLeadsCount}</span>
                       {hotLeadsCount > 0 && (
                         <span className="text-[#4ade80] text-xs flex items-center font-bold">
                           <TrendingUp size={14} className="mr-0.5" /> {hotLeadsCount} Hot
@@ -559,15 +640,15 @@ export default function BrokerCRM({
                   </div>
 
                   {/* Stat Card 3: Active Transactions / Unlocked Leads */}
-                  <div className="bg-[#131313] border border-[#444748] p-5 rounded flex flex-col justify-between h-32 relative overflow-hidden group">
+                  <div className="bg-[#131313] border border-[#444748] p-4 sm:p-5 rounded flex flex-col justify-between min-h-[112px] sm:h-32 relative overflow-hidden group sm:col-span-2 md:col-span-1">
                     <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                     <div className="flex justify-between items-start z-10">
-                      <span className="text-[#c4c7c8] text-[11px] uppercase tracking-wider font-bold">Active Transactions</span>
-                      <DollarSign size={20} className="text-[#c4c7c8]" />
+                      <span className="text-white text-[11px] uppercase tracking-wider font-bold">Active Transactions</span>
+                      <DollarSign size={20} className="text-[#dcdcdc]" />
                     </div>
-                    <div className="z-10 flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-white font-mono">{claimedLeadsCount}</span>
-                      <span className="text-[#c4c7c8] text-xs">Unlocked Prospects</span>
+                    <div className="z-10 flex items-baseline gap-2 mt-2 sm:mt-0">
+                      <span className="text-2xl sm:text-3xl font-bold text-white font-mono">{claimedLeadsCount}</span>
+                      <span className="text-white text-xs">Unlocked Prospects</span>
                     </div>
                   </div>
                 </div>
@@ -575,15 +656,15 @@ export default function BrokerCRM({
                 {/* Inventory Section - CLONED FROM CRM.md */}
                 <div className="bg-[#131313] border border-[#444748] rounded flex flex-col overflow-hidden">
                   {/* Section Header & Filters */}
-                  <div className="p-5 border-b border-[#444748] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div className="p-3.5 sm:p-5 border-b border-[#444748] flex flex-col md:flex-row justify-between items-start md:items-center gap-3.5 md:gap-4">
                     <div>
-                      <h3 className="text-lg text-white font-semibold">Unit Inventory</h3>
-                      <p className="text-[#c4c7c8] text-xs mt-1">Manage listings and monitor certification metrics.</p>
+                      <h3 className="text-base sm:text-lg text-white font-semibold">Unit Inventory</h3>
+                      <p className="text-[#c4c7c8] text-xs mt-0.5 sm:mt-1">Manage listings and monitor certification metrics.</p>
                     </div>
 
                     {/* Filters */}
-                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                      <div className="relative w-full md:w-64">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
+                      <div className="relative w-full sm:w-64">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#c4c7c8]/50" />
                         <input
                           type="text"
@@ -593,14 +674,14 @@ export default function BrokerCRM({
                             setCurrentPage(1);
                           }}
                           placeholder="Search units (EGP)..."
-                          className="w-full bg-[#0A0A0A] border border-[#282828] text-white placeholder-[#c4c7c8]/40 rounded py-1.5 pl-9 pr-3 focus:outline-none focus:border-white text-xs"
+                          className="w-full bg-[#0A0A0A] border border-[#282828] text-white placeholder-[#c4c7c8]/40 rounded py-2 sm:py-1.5 pl-9 pr-3 focus:outline-none focus:border-white text-xs"
                         />
                       </div>
 
                       <div className="flex items-center gap-1 bg-[#0A0A0A] border border-[#282828] rounded p-1">
                         <button
                           onClick={() => { setStatusFilter("all"); setCurrentPage(1); }}
-                          className={`px-3 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                          className={`px-3 py-1.5 sm:py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
                             statusFilter === "all"
                               ? "bg-[#2a2a2a] text-white"
                               : "text-[#c4c7c8] hover:text-white"
@@ -610,7 +691,7 @@ export default function BrokerCRM({
                         </button>
                         <button
                           onClick={() => { setStatusFilter("verified"); setCurrentPage(1); }}
-                          className={`px-3 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                          className={`px-3 py-1.5 sm:py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
                             statusFilter === "verified"
                               ? "bg-[#2a2a2a] text-white"
                               : "text-[#c4c7c8] hover:text-white"
@@ -624,7 +705,7 @@ export default function BrokerCRM({
                         <div className="flex items-center gap-1 bg-[#0A0A0A] border border-[#282828] rounded p-1">
                           <button
                             onClick={() => { setOwnerFilter("all"); setCurrentPage(1); }}
-                            className={`px-3 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            className={`px-3 py-1.5 sm:py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
                               ownerFilter === "all"
                                 ? "bg-[#2a2a2a] text-white"
                                 : "text-[#c4c7c8] hover:text-white"
@@ -634,7 +715,7 @@ export default function BrokerCRM({
                           </button>
                           <button
                             onClick={() => { setOwnerFilter("mine"); setCurrentPage(1); }}
-                            className={`px-3 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            className={`px-3 py-1.5 sm:py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
                               ownerFilter === "mine"
                                 ? "bg-[#2a2a2a] text-white"
                                 : "text-[#c4c7c8] hover:text-white"
@@ -647,9 +728,10 @@ export default function BrokerCRM({
                     </div>
                   </div>
 
-                  {/* Data Table - CLONED FROM CRM.md */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-sm">
+                  {/* Data Table - Responsive Architecture */}
+                  {/* Desktop Table View (>= md) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-sm min-w-full">
                       <thead>
                         <tr className="border-b border-[#444748] bg-[#121212]">
                           <th className="py-3 px-4 text-xs font-medium text-[#c4c7c8] uppercase tracking-wider">Property Name</th>
@@ -809,23 +891,111 @@ export default function BrokerCRM({
                     </table>
                   </div>
 
+                  {/* Mobile Dedicated Property Cards (< md) */}
+                  <div className="md:hidden divide-y divide-[#1A1A1A]">
+                    {paginatedUnits.length === 0 ? (
+                      <div className="py-10 px-4 text-center">
+                        <Building2 size={32} className="mx-auto text-[#c4c7c8]/40 mb-3" />
+                        <p className="text-white font-bold text-sm">No properties in inventory</p>
+                        <p className="text-xs text-[#c4c7c8] mt-1">
+                          {tableSearch || globalSearch
+                            ? "No units match search criteria."
+                            : "Upload your first listing to manage inventory."}
+                        </p>
+                        <button
+                          onClick={openUploadModal}
+                          className="mt-4 px-4 py-2 bg-white text-black font-bold text-xs rounded-full hover:bg-slate-200 transition cursor-pointer"
+                        >
+                          + Upload new property
+                        </button>
+                      </div>
+                    ) : (
+                      paginatedUnits.map((unit, idx) => {
+                        const isVerified = unit.legalPaperStatus === "verified_boost" || unit.legalPaperStatus === "verified";
+                        const matchingLeads = leads.filter(l => 
+                          (l.interestedUnitId && l.interestedUnitId === unit.id) ||
+                          (l.interestedUnitTitle && unit.title && l.interestedUnitTitle.toLowerCase() === unit.title.toLowerCase())
+                        );
+
+                        return (
+                          <div key={unit.id || idx} className="p-3.5 space-y-2.5 bg-[#131313] hover:bg-[#161616] transition-colors">
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded bg-[#2a2a2a] overflow-hidden shrink-0 border border-white/10">
+                                <img
+                                  src={unit.imageUrl || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                                  alt={unit.title}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <h4 className="font-bold text-white text-sm truncate">{unit.title}</h4>
+                                  <span className="font-mono text-white font-bold text-xs shrink-0">
+                                    {unit.price ? formatCurrency(unit.price) : "Price on inquiry"}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-[#c4c7c8] flex items-center gap-1 mt-0.5">
+                                  <MapPin size={11} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{unit.location || "Prime Location"}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                                  isVerified
+                                    ? "bg-[#064e3b] text-[#34d399] border-[#047857]"
+                                    : "bg-[#451a03] text-[#fbbf24] border-[#78350f]"
+                                }`}>
+                                  {isVerified ? "Verified" : "Pending"}
+                                </span>
+                                <span className="text-[10px] text-[#c4c7c8] font-mono">
+                                  {matchingLeads.length} {matchingLeads.length === 1 ? "Lead" : "Leads"}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => openEditModal(unit)}
+                                  className="text-[#c4c7c8] hover:text-white px-2.5 py-1 rounded text-xs font-medium bg-white/5 active:scale-95 cursor-pointer flex items-center gap-1 min-h-[32px]"
+                                >
+                                  <Edit3 size={12} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  onClick={() => setDeletingUnitId(unit.id!)}
+                                  className="text-rose-400 hover:text-rose-300 px-2.5 py-1 rounded text-xs font-medium bg-rose-500/10 active:scale-95 cursor-pointer flex items-center gap-1 min-h-[32px]"
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
                   {/* Pagination / Footer - CLONED FROM CRM.md */}
-                  <div className="p-4 border-t border-[#444748] flex items-center justify-between text-xs text-[#c4c7c8]">
-                    <span>
+                  <div className="p-3.5 sm:p-4 border-t border-[#444748] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#c4c7c8]">
+                    <span className="text-center sm:text-left">
                       Showing {totalEntries === 0 ? 0 : startIndex + 1} to {Math.min(startIndex + pageSize, totalEntries)} of {totalEntries} entries
                     </span>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={safeCurrentPage <= 1}
-                        className="px-2.5 py-1 border border-[#444748] rounded hover:bg-[#2a2a2a] disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-medium"
+                        className="px-3.5 py-1.5 border border-[#444748] rounded hover:bg-[#2a2a2a] disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-medium min-h-[36px]"
                       >
                         Prev
                       </button>
                       <button
                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         disabled={safeCurrentPage >= totalPages}
-                        className="px-2.5 py-1 border border-[#444748] rounded hover:bg-[#2a2a2a] disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-medium"
+                        className="px-3.5 py-1.5 border border-[#444748] rounded hover:bg-[#2a2a2a] disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-medium min-h-[36px]"
                       >
                         Next
                       </button>
@@ -837,19 +1007,19 @@ export default function BrokerCRM({
 
             {/* VIEW 2: FULL INVENTORY TAB */}
             {activeTab === "inventory" && (
-              <div className="space-y-6">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">Property Inventory</h2>
-                    <p className="text-xs text-[#c4c7c8] mt-1">Manage and track your full real-estate portfolio across all registered developments.</p>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Property Inventory</h2>
+                    <p className="text-xs text-[#c4c7c8] mt-0.5 sm:mt-1">Manage and track your full real-estate portfolio across all registered developments.</p>
                   </div>
                   
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3 w-full sm:w-auto">
                     {/* View mode toggle */}
                     <div className="flex items-center bg-[#131313] border border-[#444748] rounded p-1">
                       <button
                         onClick={() => setInventoryViewMode("table")}
-                        className={`p-1.5 rounded text-xs transition cursor-pointer ${
+                        className={`p-2 rounded text-xs transition cursor-pointer min-w-[36px] flex items-center justify-center ${
                           inventoryViewMode === "table" ? "bg-[#2a2a2a] text-white" : "text-[#c4c7c8] hover:text-white"
                         }`}
                         title="Table View"
@@ -858,7 +1028,7 @@ export default function BrokerCRM({
                       </button>
                       <button
                         onClick={() => setInventoryViewMode("grid")}
-                        className={`p-1.5 rounded text-xs transition cursor-pointer ${
+                        className={`p-2 rounded text-xs transition cursor-pointer min-w-[36px] flex items-center justify-center ${
                           inventoryViewMode === "grid" ? "bg-[#2a2a2a] text-white" : "text-[#c4c7c8] hover:text-white"
                         }`}
                         title="Card Grid View"
@@ -869,19 +1039,19 @@ export default function BrokerCRM({
 
                     <button
                       onClick={openUploadModal}
-                      className="bg-white text-black font-bold text-xs py-2 px-4 rounded-full flex items-center gap-2 hover:bg-slate-200 cursor-pointer"
+                      className="bg-white text-black font-bold text-xs py-2 px-3.5 sm:px-4 rounded-full flex items-center gap-1.5 sm:gap-2 hover:bg-slate-200 cursor-pointer shadow active:scale-95 shrink-0"
                     >
                       <Plus size={15} />
-                      <span>Upload New Property</span>
+                      <span>Upload Property</span>
                     </button>
                   </div>
                 </div>
 
                 {inventoryViewMode === "grid" ? (
                   /* Bento Grid View */
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {filteredUnits.length === 0 ? (
-                      <div className="col-span-full py-16 text-center bg-[#131313] border border-[#444748] rounded-xl p-8">
+                      <div className="col-span-full py-12 sm:py-16 text-center bg-[#131313] border border-[#444748] rounded-xl p-6 sm:p-8">
                         <Building2 size={36} className="mx-auto text-slate-500 mb-3" />
                         <h4 className="text-base font-bold text-white">No Properties Listed</h4>
                         <p className="text-xs text-slate-400 mt-1 mb-4">You have not uploaded any property listings yet.</p>
@@ -900,7 +1070,7 @@ export default function BrokerCRM({
                             key={unit.id || idx}
                             className="bg-[#131313] border border-[#444748] rounded-xl overflow-hidden flex flex-col justify-between hover:border-white/40 transition-all group"
                           >
-                            <div className="relative h-44 bg-slate-900 overflow-hidden">
+                            <div className="relative h-44 sm:h-48 bg-slate-900 overflow-hidden">
                               <img
                                 src={unit.imageUrl || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
                                 alt={unit.title}
@@ -908,22 +1078,22 @@ export default function BrokerCRM({
                                 referrerPolicy="no-referrer"
                               />
                               {isVerified && (
-                                <span className="absolute top-3 left-3 bg-[#064e3b] text-[#34d399] border border-[#047857] px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 font-mono">
+                                <span className="absolute top-3 left-3 bg-[#064e3b] text-[#34d399] border border-[#047857] px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 font-mono shadow">
                                   <ShieldCheck size={12} />
                                   Verified
                                 </span>
                               )}
-                              <span className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded text-xs font-mono font-bold text-white border border-[#444748]">
+                              <span className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded text-xs font-mono font-bold text-white border border-[#444748] shadow">
                                 {formatCurrency(unit.price)}
                               </span>
                             </div>
 
-                            <div className="p-4 flex-1 flex flex-col justify-between gap-3 text-left">
+                            <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between gap-3 text-left">
                               <div className="space-y-1">
                                 <h3 className="font-bold text-white text-sm line-clamp-1">{unit.title}</h3>
                                 <p className="text-xs text-[#c4c7c8] flex items-center gap-1">
-                                  <MapPin size={12} className="text-slate-400" />
-                                  {unit.location}
+                                  <MapPin size={12} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{unit.location}</span>
                                 </p>
                                 <p className="text-xs text-slate-400 line-clamp-2 mt-1">{unit.description}</p>
                               </div>
@@ -931,14 +1101,14 @@ export default function BrokerCRM({
                               <div className="flex items-center justify-between pt-3 border-t border-[#444748] text-xs">
                                 <button
                                   onClick={() => openEditModal(unit)}
-                                  className="text-[#c4c7c8] hover:text-white flex items-center gap-1 font-medium cursor-pointer"
+                                  className="text-[#c4c7c8] hover:text-white flex items-center gap-1 font-medium cursor-pointer p-1.5 -ml-1 rounded active:scale-95"
                                 >
                                   <Edit3 size={13} />
                                   Edit
                                 </button>
                                 <button
                                   onClick={() => setDeletingUnitId(unit.id!)}
-                                  className="text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium cursor-pointer"
+                                  className="text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium cursor-pointer p-1.5 -mr-1 rounded active:scale-95"
                                 >
                                   <Trash2 size={13} />
                                   Delete
@@ -951,10 +1121,11 @@ export default function BrokerCRM({
                     )}
                   </div>
                 ) : (
-                  /* Cloned Table View */
+                  /* Table / List View - Responsive Architecture */
                   <div className="bg-[#131313] border border-[#444748] rounded overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-sm">
+                    {/* Desktop Table View (>= md) */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-sm min-w-full">
                         <thead>
                           <tr className="border-b border-[#444748] bg-[#121212]">
                             <th className="py-3 px-4 text-xs font-medium text-[#c4c7c8] uppercase tracking-wider">Property Name</th>
@@ -992,14 +1163,14 @@ export default function BrokerCRM({
                                   <div className="flex items-center justify-end gap-2">
                                     <button
                                       onClick={() => openEditModal(unit)}
-                                      className="p-1.5 hover:bg-white/10 rounded text-slate-300 hover:text-white transition cursor-pointer"
+                                      className="p-2 hover:bg-white/10 rounded text-slate-300 hover:text-white transition cursor-pointer"
                                       title="Edit"
                                     >
                                       <Edit3 size={14} />
                                     </button>
                                     <button
                                       onClick={() => setDeletingUnitId(unit.id!)}
-                                      className="p-1.5 hover:bg-red-500/20 rounded text-rose-400 hover:text-rose-300 transition cursor-pointer"
+                                      className="p-2 hover:bg-red-500/20 rounded text-rose-400 hover:text-rose-300 transition cursor-pointer"
                                       title="Delete"
                                     >
                                       <Trash2 size={14} />
@@ -1012,6 +1183,72 @@ export default function BrokerCRM({
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Mobile Property List Cards (< md) */}
+                    <div className="md:hidden divide-y divide-[#1A1A1A]">
+                      {filteredUnits.length === 0 ? (
+                        <div className="py-12 text-center text-slate-400 text-xs px-4">
+                          No properties found matching your criteria.
+                        </div>
+                      ) : (
+                        filteredUnits.map((unit, idx) => {
+                          const isVerified = unit.legalPaperStatus === "verified_boost" || unit.legalPaperStatus === "verified";
+                          return (
+                            <div key={unit.id || idx} className="p-3.5 space-y-2.5 bg-[#131313] hover:bg-[#161616] transition-colors">
+                              <div className="flex items-start gap-3">
+                                <div className="w-12 h-12 rounded bg-[#2a2a2a] overflow-hidden shrink-0 border border-white/10">
+                                  <img
+                                    src={unit.imageUrl || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                                    alt={unit.title}
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h4 className="font-bold text-white text-sm truncate">{unit.title}</h4>
+                                    <span className="font-mono text-white font-bold text-xs shrink-0">
+                                      {unit.price ? formatCurrency(unit.price) : "Price on inquiry"}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-[#c4c7c8] flex items-center gap-1 mt-0.5">
+                                    <MapPin size={11} className="text-slate-400 shrink-0" />
+                                    <span className="truncate">{unit.location || "Prime Location"}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                                  isVerified
+                                    ? "bg-[#064e3b] text-[#34d399] border-[#047857]"
+                                    : "bg-[#451a03] text-[#fbbf24] border-[#78350f]"
+                                }`}>
+                                  {isVerified ? "Verified" : "Pending"}
+                                </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => openEditModal(unit)}
+                                    className="text-[#c4c7c8] hover:text-white px-2.5 py-1 rounded text-xs font-medium bg-white/5 active:scale-95 cursor-pointer flex items-center gap-1 min-h-[32px]"
+                                  >
+                                    <Edit3 size={12} />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingUnitId(unit.id!)}
+                                    className="text-rose-400 hover:text-rose-300 px-2.5 py-1 rounded text-xs font-medium bg-rose-500/10 active:scale-95 cursor-pointer flex items-center gap-1 min-h-[32px]"
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1019,21 +1256,16 @@ export default function BrokerCRM({
 
             {/* VIEW 3: LEADS CENTER TAB */}
             {activeTab === "leads" && (
-              <div className="space-y-6">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">Leads & Prospects</h2>
-                    <p className="text-xs text-[#c4c7c8] mt-1">Direct inquiries generated from buyers interacting with your properties.</p>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Leads & Prospects</h2>
+                    <p className="text-xs text-[#c4c7c8] mt-0.5 sm:mt-1">Direct inquiries generated from buyers interacting with your properties.</p>
                   </div>
-                  {onClearAllLeads && userLeads.length > 0 && (
+                  {onClearAllLeads && (userLeads.length > 0 || leads.length > 0) && (
                     <button
-                      onClick={async () => {
-                        if (window.confirm("Are you sure you want to clear all leads?")) {
-                          await onClearAllLeads();
-                          showNotification("All leads cleared", "info");
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded border border-rose-500/30 text-rose-400 hover:bg-rose-950/40 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                      onClick={() => setConfirmClearLeadsModal(true)}
+                      className="px-3 py-1.5 rounded border border-rose-500/30 text-rose-400 hover:bg-rose-950/40 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shrink-0"
                     >
                       <Trash2 size={13} />
                       Clear All Leads
@@ -1042,38 +1274,38 @@ export default function BrokerCRM({
                 </div>
 
                 {/* Lead Bento Metrics */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-[#131313] border border-[#444748] p-4 rounded text-left">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                  <div className="bg-[#131313] border border-[#444748] p-3.5 sm:p-4 rounded text-left">
                     <span className="text-[11px] text-[#c4c7c8] uppercase font-bold">Total Inquiries</span>
-                    <h4 className="text-2xl font-bold text-white mt-1 font-mono">{totalLeadsCount}</h4>
+                    <h4 className="text-xl sm:text-2xl font-bold text-white mt-1 font-mono">{totalLeadsCount}</h4>
                   </div>
-                  <div className="bg-[#131313] border border-[#444748] p-4 rounded text-left">
+                  <div className="bg-[#131313] border border-[#444748] p-3.5 sm:p-4 rounded text-left">
                     <span className="text-[11px] text-red-400 uppercase font-bold flex items-center gap-1">
                       <Flame size={13} /> Hot Leads
                     </span>
-                    <h4 className="text-2xl font-bold text-white mt-1 font-mono">{hotLeadsCount}</h4>
+                    <h4 className="text-xl sm:text-2xl font-bold text-white mt-1 font-mono">{hotLeadsCount}</h4>
                   </div>
-                  <div className="bg-[#131313] border border-[#444748] p-4 rounded text-left">
+                  <div className="bg-[#131313] border border-[#444748] p-3.5 sm:p-4 rounded text-left">
                     <span className="text-[11px] text-amber-400 uppercase font-bold flex items-center gap-1">
                       <Sun size={13} /> Warm Leads
                     </span>
-                    <h4 className="text-2xl font-bold text-white mt-1 font-mono">{warmLeadsCount}</h4>
+                    <h4 className="text-xl sm:text-2xl font-bold text-white mt-1 font-mono">{warmLeadsCount}</h4>
                   </div>
-                  <div className="bg-[#131313] border border-[#444748] p-4 rounded text-left">
+                  <div className="bg-[#131313] border border-[#444748] p-3.5 sm:p-4 rounded text-left">
                     <span className="text-[11px] text-emerald-400 uppercase font-bold flex items-center gap-1">
                       <Unlock size={13} /> Unlocked
                     </span>
-                    <h4 className="text-2xl font-bold text-white mt-1 font-mono">{claimedLeadsCount}</h4>
+                    <h4 className="text-xl sm:text-2xl font-bold text-white mt-1 font-mono">{claimedLeadsCount}</h4>
                   </div>
                 </div>
 
                 {/* Leads Layout: List + Profile Details */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-start">
                   
                   {/* Leads List */}
                   <div className="lg:col-span-2 space-y-3">
                     {filteredLeads.length === 0 ? (
-                      <div className="bg-[#131313] border border-[#444748] rounded p-12 text-center">
+                      <div className="bg-[#131313] border border-[#444748] rounded p-8 sm:p-12 text-center">
                         <Users size={32} className="mx-auto text-slate-500 mb-3" />
                         <h4 className="text-base font-bold text-white">No Prospect Inquiries Yet</h4>
                         <p className="text-xs text-slate-400 mt-1">Leads will automatically arrive here as buyers chat and request property contacts.</p>
@@ -1087,14 +1319,14 @@ export default function BrokerCRM({
                           <div
                             key={lead.id}
                             onClick={() => setSelectedLead(lead)}
-                            className={`p-4 rounded border transition-all cursor-pointer text-left flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${
+                            className={`p-3.5 sm:p-4 rounded border transition-all cursor-pointer text-left flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 ${
                               isSelected
                                 ? "bg-[#201f1f] border-white text-white shadow-lg"
                                 : "bg-[#131313] border-[#444748] hover:border-white/40 hover:bg-[#1a1a1a]"
                             }`}
                           >
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="text-sm font-bold text-white">
                                   {isClaimed ? lead.name : `Buyer Prospect #${lead.id?.slice(-4) || "New"}`}
                                 </h4>
@@ -1106,29 +1338,42 @@ export default function BrokerCRM({
                                   {lead.qualification || "Prospect"}
                                 </span>
                               </div>
-                              <p className="text-xs text-[#c4c7c8]">
+                              <p className="text-xs text-[#c4c7c8] line-clamp-1">
                                 Interested in: <strong className="text-white">{lead.interestedUnitTitle || lead.propertyType}</strong>
                               </p>
-                              <div className="flex items-center gap-4 text-xs text-slate-400">
+                              <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
                                 <span>{lead.location}</span>
                                 <span>•</span>
                                 <span className="font-mono text-white">{lead.budget}</span>
                               </div>
                             </div>
 
-                            <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <div className="w-full sm:w-auto shrink-0 flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5" onClick={(e) => e.stopPropagation()}>
                               {isClaimed ? (
-                                <span className="bg-[#064e3b] text-[#34d399] border border-[#047857] text-[10px] font-bold uppercase px-3 py-1 rounded flex items-center gap-1 font-mono">
+                                <span className="bg-[#064e3b] text-[#34d399] border border-[#047857] text-[10px] font-bold uppercase px-3 py-1.5 rounded flex items-center gap-1 font-mono">
                                   <Unlock size={12} />
                                   Unlocked
                                 </span>
                               ) : (
                                 <button
                                   onClick={() => setConfirmLeadUnlock(lead)}
-                                  className="bg-white hover:bg-slate-200 text-black font-bold text-xs px-3.5 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shadow"
+                                  className="bg-white hover:bg-slate-200 text-black font-bold text-xs px-3.5 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shadow active:scale-95"
                                 >
                                   <Lock size={12} />
                                   Unlock ({formatCurrency(lead.value || 1000)})
+                                </button>
+                              )}
+                              {onDeleteLead && (
+                                <button
+                                  onClick={async () => {
+                                    if (selectedLead?.id === lead.id) setSelectedLead(null);
+                                    await onDeleteLead(lead.id);
+                                    showNotification("Lead deleted", "info");
+                                  }}
+                                  className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 rounded transition cursor-pointer"
+                                  title="Delete lead"
+                                >
+                                  <Trash2 size={14} />
                                 </button>
                               )}
                             </div>
@@ -1139,17 +1384,33 @@ export default function BrokerCRM({
                   </div>
 
                   {/* Prospect Details Panel */}
-                  <div className="lg:col-span-1 bg-[#131313] border border-[#444748] rounded p-5 space-y-4 text-left">
+                  <div className="lg:col-span-1 bg-[#131313] border border-[#444748] rounded p-4 sm:p-5 space-y-4 text-left">
                     <div className="border-b border-[#444748] pb-3 flex justify-between items-center">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-[#c4c7c8]">Prospect Dossier</h4>
-                      {selectedLead && selectedLead.status === "claimed" && (
-                        <button
-                          onClick={() => setShowRefundModal(true)}
-                          className="text-[10px] text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer"
-                        >
-                          Request Refund
-                        </button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {selectedLead && selectedLead.status === "claimed" && (
+                          <button
+                            onClick={() => setShowRefundModal(true)}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer p-1"
+                          >
+                            Request Refund
+                          </button>
+                        )}
+                        {selectedLead && onDeleteLead && (
+                          <button
+                            onClick={async () => {
+                              const idToDelete = selectedLead.id;
+                              setSelectedLead(null);
+                              await onDeleteLead(idToDelete);
+                              showNotification("Lead deleted", "info");
+                            }}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 cursor-pointer p-1"
+                            title="Delete this lead"
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {selectedLead ? (() => {
@@ -1185,6 +1446,18 @@ export default function BrokerCRM({
                               <span className="text-[#c4c7c8]">Budget:</span>
                               <span className="font-bold text-white font-mono">{selectedLead.budget}</span>
                             </div>
+                            {selectedLead.preferredViewingDate && (
+                              <div className="flex justify-between py-1 border-b border-[#282828]">
+                                <span className="text-[#c4c7c8]">Preferred Viewing:</span>
+                                <span className="font-bold text-sky-400 font-mono">{selectedLead.preferredViewingDate}</span>
+                              </div>
+                            )}
+                            {selectedLead.source && (
+                              <div className="flex justify-between py-1 border-b border-[#282828]">
+                                <span className="text-[#c4c7c8]">Source:</span>
+                                <span className="font-bold text-slate-300 font-mono text-[11px]">{selectedLead.source === "property_contact" ? "Contact Agent Form" : selectedLead.source}</span>
+                              </div>
+                            )}
                           </div>
 
                           {!isClaimed ? (
@@ -1315,18 +1588,10 @@ export default function BrokerCRM({
                       Purge all database records (properties, leads, and transaction logs) to test or train the AI assistant with zero data from scratch.
                     </p>
                     <button
-                      onClick={async () => {
-                        if (window.confirm("Are you sure you want to wipe all records and start fresh from zero?")) {
-                          try {
-                            await onClearAllData();
-                            showNotification("All database records wiped out successfully", "success");
-                          } catch (err: any) {
-                            showNotification(err.message || "Failed to reset database", "error");
-                          }
-                        }
-                      }}
-                      className="px-4 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 font-bold text-xs rounded transition cursor-pointer"
+                      onClick={() => setConfirmClearAllDataModal(true)}
+                      className="px-4 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 font-bold text-xs rounded transition cursor-pointer flex items-center gap-1.5"
                     >
+                      <Trash2 size={13} />
                       Wipe All Data & Start Fresh ⚠️
                     </button>
                   </div>
@@ -1484,6 +1749,135 @@ export default function BrokerCRM({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- CONFIRM CLEAR ALL LEADS MODAL --- */}
+      <AnimatePresence>
+        {confirmClearLeadsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#131313] border border-rose-500/40 rounded-xl p-6 max-w-md w-full text-left shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <Trash2 size={20} />
+                  <h3 className="text-base font-bold text-white">Clear All Leads</h3>
+                </div>
+                <button 
+                  onClick={() => setConfirmClearLeadsModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-full cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="text-xs text-[#c4c7c8] leading-relaxed">
+                Are you sure you want to permanently clear all <strong className="text-white">{userLeads.length || leads.length}</strong> inquiries from your leads queue? This action cannot be undone.
+              </p>
+
+              <div className="flex gap-2 pt-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearLeadsModal(false)}
+                  className="bg-white/5 hover:bg-white/10 text-white text-xs font-bold px-4 py-2 rounded cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isClearingLeads}
+                  onClick={async () => {
+                    try {
+                      setIsClearingLeads(true);
+                      await onClearAllLeads?.();
+                      setSelectedLead(null);
+                      setConfirmClearLeadsModal(false);
+                      showNotification("All leads cleared successfully", "info");
+                    } catch (err: any) {
+                      showNotification(err?.message || "Failed to clear leads", "error");
+                    } finally {
+                      setIsClearingLeads(false);
+                    }
+                  }}
+                  className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {isClearingLeads ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      Clearing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={13} />
+                      Yes, Clear All Leads
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- CONFIRM WIPE ALL DATA MODAL --- */}
+      <AnimatePresence>
+        {confirmClearAllDataModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#131313] border border-rose-500/40 rounded-xl p-6 max-w-md w-full text-left shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <Trash2 size={20} />
+                  <h3 className="text-base font-bold text-white">Wipe All Records & Reset</h3>
+                </div>
+                <button 
+                  onClick={() => setConfirmClearAllDataModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-full cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="text-xs text-[#c4c7c8] leading-relaxed">
+                Are you sure you want to completely wipe all records (units, leads, and transaction logs) and reset to zero? This is irreversible.
+              </p>
+
+              <div className="flex gap-2 pt-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearAllDataModal(false)}
+                  className="bg-white/5 hover:bg-white/10 text-white text-xs font-bold px-4 py-2 rounded cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await onClearAllData?.();
+                      setSelectedLead(null);
+                      setConfirmClearAllDataModal(false);
+                      showNotification("All database records wiped out successfully", "info");
+                    } catch (err: any) {
+                      showNotification(err?.message || "Failed to reset database", "error");
+                    }
+                  }}
+                  className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 size={13} />
+                  Yes, Wipe Everything
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

@@ -1,13 +1,50 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  addDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  serverTimestamp,
+  limit
+} from "firebase/firestore";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Lazy Singleton Firestore client for server-side verification and routing
+let serverDbInstance: any = null;
+
+function getServerDb() {
+  if (!serverDbInstance) {
+    try {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      if (fs.existsSync(configPath)) {
+        const rawConfig = fs.readFileSync(configPath, "utf8");
+        const firebaseConfig = JSON.parse(rawConfig);
+        const existingApps = getApps();
+        const firebaseApp = existingApps.length > 0 
+          ? existingApps[0] 
+          : initializeApp(firebaseConfig, "server-app");
+        serverDbInstance = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId || "(default)");
+      }
+    } catch (e) {
+      console.error("[Backend Firestore] Error initializing Firestore in server:", e);
+    }
+  }
+  return serverDbInstance;
+}
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -165,6 +202,144 @@ function getUnitFallbackImage(propertyType: string): string {
   }
   return "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80";
 }
+
+function getPropertyImageGallery(unit: any): string[] {
+  if (!unit) return [];
+  if (Array.isArray(unit.images) && unit.images.length > 0) {
+    return unit.images;
+  }
+  const mainImage = unit.imageUrl || getUnitFallbackImage(unit.propertyType || "");
+  const type = (unit.propertyType || "").toLowerCase();
+
+  let gallery: string[] = [mainImage];
+
+  if (type.includes("villa")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else if (type.includes("penthouse")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1512915922686-57c11dde9b6b?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else if (type.includes("chalet")) {
+    gallery.push(
+      "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80"
+    );
+  } else {
+    gallery.push(
+      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80"
+    );
+  }
+
+  return Array.from(new Set(gallery));
+}
+
+const DEFAULT_BACKEND_UNITS = [
+  {
+    id: "unit-zayed-prime-01",
+    title: "Zayed Signature Residences - Old Sheikh Zayed (Street 1)",
+    description: "Exclusive boutique development in the heart of Old Sheikh Zayed directly on Street 1. Prime location with 10% down payment, 1.5-year delivery, luxury ultra-modern finishing, smart home system, and verified ownership deed.",
+    price: 4500000,
+    location: "Old Sheikh Zayed, Giza",
+    propertyType: "Apartment",
+    legalPaperStatus: "verified_boost",
+    ownerName: "Zayed Developments & Advisory",
+    ownerPhone: "+201002345678",
+    visibility: "public",
+    imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80"
+    ],
+    details: {
+      areaSq: 185,
+      bedrooms: 3,
+      bathrooms: 2,
+      finishingLevel: "Ultra Super Lux"
+    }
+  },
+  {
+    id: "unit-zayed-beverly-02",
+    title: "Luxury Standalone Villa - Beverly Hills, Sheikh Zayed",
+    description: "Spectacular modern standalone villa with private infinity pool, lush landscaped garden, double-height reception, and direct view on the central park. Prime gated compound in Sheikh Zayed.",
+    price: 12500000,
+    location: "Beverly Hills, Sheikh Zayed",
+    propertyType: "Villa",
+    legalPaperStatus: "verified_boost",
+    ownerName: "Eng. Tarek Mansour",
+    ownerPhone: "+201019876543",
+    visibility: "public",
+    imageUrl: "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=1200&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1512915922686-57c11dde9b6b?auto=format&fit=crop&w=1200&q=80"
+    ],
+    details: {
+      areaSq: 340,
+      bedrooms: 4,
+      bathrooms: 4
+    }
+  },
+  {
+    id: "unit-newcairo-penthouse-03",
+    title: "Skyline Penthouse with Private Roof - Golden Square, New Cairo",
+    description: "High-end penthouse overlooking the lake and clubhouse in 5th Settlement Golden Square. Features expansive outdoor roof terrace, panoramic views, 3 master bedrooms, and flexible 8-year payment plan.",
+    price: 6800000,
+    location: "Golden Square, 5th Settlement, New Cairo",
+    propertyType: "Penthouse",
+    legalPaperStatus: "verified_boost",
+    ownerName: "New Cairo Real Estate Partner",
+    ownerPhone: "+201004455667",
+    visibility: "public",
+    imageUrl: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80"
+    ],
+    details: {
+      areaSq: 235,
+      bedrooms: 3,
+      bathrooms: 3
+    }
+  },
+  {
+    id: "unit-northcoast-chalet-04",
+    title: "Sea-View Premium Chalet - Ras El Hekma, North Coast",
+    description: "Direct beachfront chalet with crystal lagoon access in prime Ras El Hekma. Fully furnished with international design, ACs installed, private balcony overlooking the Mediterranean.",
+    price: 7900000,
+    location: "Ras El Hekma, North Coast",
+    propertyType: "Chalet",
+    legalPaperStatus: "verified_boost",
+    ownerName: "Coastal Properties Egypt",
+    ownerPhone: "+201099887766",
+    visibility: "public",
+    imageUrl: "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?auto=format&fit=crop&w=1200&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80"
+    ],
+    details: {
+      areaSq: 145,
+      bedrooms: 3,
+      bathrooms: 2
+    }
+  }
+];
 
 // Location matching helper with spatial landmark intelligence (Bilingual: Arabic & English)
 function isLocationMatch(propertyLocation: string, propertyTitle: string, targetLoc: string): boolean {
@@ -688,11 +863,19 @@ function getLocalAgentResponse(messages: any[], units: any[], rate: number, acti
   const userDialect = detectDialect(lastUserMsg || combinedHistory);
 
   // Rule 0: Photo or Appointment / Visit request detection
-  const isPhotoOrVisitReq = /photo|picture|image|visit|book|appointment|صورة|صور|معاينة|زيارة|حجز|اشوف|أشوف/i.test(lastUserMsg);
+  const isPhotoOrVisitReq = /photo|photos|picture|pictures|image|images|pic|pics|gallery|visit|book|appointment|where.*photo|where.*pic|صورة|صور|صورها|صوره|تصميم|وريني|اشوف|أشوف|معاينة|زيارة|حجز|شكل|شكلها|فين الصور|وين الصور/i.test(lastUserMsg);
   if (isPhotoOrVisitReq) {
-    const candidateUnits = (units || []).filter((u: any) => u.visibility !== "private").slice(0, 2);
-    if (candidateUnits.length > 0) {
-      const itemsText = candidateUnits.map((u: any) => {
+    const rawUnits = (Array.isArray(units) && units.length > 0 ? units : DEFAULT_BACKEND_UNITS);
+    let candidateUnits = rawUnits.filter((u: any) => u.visibility !== "private");
+    if (detectedLoc) {
+      const locMatches = candidateUnits.filter((u: any) => isLocationMatch(u.location, u.title, detectedLoc));
+      if (locMatches.length > 0) {
+        candidateUnits = locMatches;
+      }
+    }
+    const finalCandidates = candidateUnits.slice(0, 2);
+    if (finalCandidates.length > 0) {
+      const itemsText = finalCandidates.map((u: any) => {
         const shortDesc = typeof u.description === "string" ? u.description : u.title;
         const refId = u.id ? u.id.slice(-5).toUpperCase() : '132UP';
         return `${u.title}
@@ -705,24 +888,26 @@ function getLocalAgentResponse(messages: any[], units: any[], rate: number, acti
 
       let responseText = `Here are the property details and photos:\n\n${itemsText}\n\nYou can click the Contact Agent button on the card to schedule a visit.`;
       if (userDialect === 'egyptian') {
-        responseText = `دي تفاصيل الوحدات المتاحة:\n\n${itemsText}\n\nتقدر تضغط على Contact Agent لمعاينة الوحدة والتواصل المباشر مع الوكيل.`;
+        responseText = `دي تفاصيل وصور الوحدات المتاحة:\n\n${itemsText}\n\nتقدر تضغط على Contact Agent لمعاينة الوحدة والتواصل المباشر مع الوكيل.`;
       } else if (userDialect === 'gulf') {
-        responseText = `تفضل، هذه تفاصيل الوحدات المتاحة:\n\n${itemsText}\n\nتقدر تضغط على Contact Agent لتنسيق موعد المعاينة والتواصل المباشر.`;
+        responseText = `تفضل، هذه تفاصيل وصور الوحدات المتاحة:\n\n${itemsText}\n\nتقدر تضغط على Contact Agent لتنسيق موعد المعاينة والتواصل المباشر.`;
       } else if (userDialect === 'levantine' || userDialect === 'standard_arabic') {
-        responseText = `تفضل، هذه تفاصيل العقارات المتاحة:\n\n${itemsText}\n\nيمكنك الضغط على زر Contact Agent لترتيب موعد المعاينة والتواصل.`;
+        responseText = `تفضل، هذه تفاصيل وصور العقارات المتاحة:\n\n${itemsText}\n\nيمكنك الضغط على زر Contact Agent لترتيب موعد المعاينة والتواصل.`;
       }
 
       return {
         response: responseText,
         qualification: "hot",
         action: "create_lead",
-        targetUnitId: candidateUnits[0].id,
-        targetUnitTitle: candidateUnits[0].title,
-        ownerId: candidateUnits[0].uploaderId || candidateUnits[0].ownerUid || "system",
+        targetUnitId: finalCandidates[0].id,
+        targetUnitTitle: finalCandidates[0].title,
+        ownerId: finalCandidates[0].uploaderId || finalCandidates[0].ownerUid || "system",
+        suggestedUnits: finalCandidates,
+        photos: finalCandidates.flatMap((u: any) => getPropertyImageGallery(u)),
         extractedInfo: {
-          budget: detectedBudget || `${candidateUnits[0].price.toLocaleString()} EGP`,
-          propertyType: candidateUnits[0].propertyType,
-          location: candidateUnits[0].location || "Sheikh Zayed",
+          budget: detectedBudget || `${finalCandidates[0].price.toLocaleString()} EGP`,
+          propertyType: finalCandidates[0].propertyType,
+          location: finalCandidates[0].location || "Sheikh Zayed",
           legalPapersRequired: true
         }
       };
@@ -925,10 +1110,14 @@ app.post("/api/chat", async (req, res) => {
     // Tenant isolation applies to USER CRM DATA.
     // It does NOT apply to the AI's approved property discovery layer.
     // The AI must be able to search approved properties across ALL CRM tenants.
-    let filteredUnits = (Array.isArray(units) ? units : [])
+    const rawUnitsInput = (Array.isArray(units) && units.length > 0 ? units : DEFAULT_BACKEND_UNITS);
+    let filteredUnits = rawUnitsInput
       .filter((u: any) => u && u.visibility !== "private")
       .map(toPublicPropertyView)
       .filter((u: any) => u !== null);
+    if (filteredUnits.length === 0) {
+      filteredUnits = DEFAULT_BACKEND_UNITS.map(toPublicPropertyView);
+    }
     filteredUnits = sortByLegalScanPriority(filteredUnits);
     
     // We want to calculate exact matches correctly based on user filter criteria.
@@ -1542,13 +1731,54 @@ Keep your response strictly valid JSON without raw markdown codeblock wrappers.`
         parsedData.response = extractCleanResponseString(parsedData.response);
       }
       
+      const lastUserMsg = (messages[messages.length - 1]?.content || "").toLowerCase();
+      const isPhotoReq = /photo|photos|picture|pictures|image|images|pic|pics|gallery|where.*photo|where.*pic|صورة|صور|صورها|صوره|تصميم|وريني|اشوف|أشوف|معاينة|زيارة|حجز|شكل|شكلها|فين الصور|وين الصور/i.test(lastUserMsg);
+      const isAssistantPhotoMention = /صورة|صور|صورها|تصميم|تصميم المشروع|معاينة|gallery|photo|photos|picture|pictures|image|images/i.test(parsedData.response || "");
+
+      if (isPhotoReq || isAssistantPhotoMention || parsedData.targetUnitId) {
+        let matchedUnitsList: any[] = [];
+        if (parsedData.targetUnitId) {
+          matchedUnitsList = filteredUnits.filter((u: any) => u.id === parsedData.targetUnitId);
+        }
+        if (matchedUnitsList.length === 0 && targetLoc) {
+          matchedUnitsList = filteredUnits.filter((u: any) => isLocationMatch(u.location, u.title, targetLoc));
+        }
+        if (matchedUnitsList.length === 0 && finalExactMatches.length > 0) {
+          matchedUnitsList = finalExactMatches;
+        }
+        if (matchedUnitsList.length === 0) {
+          matchedUnitsList = filteredUnits.slice(0, 2);
+        }
+
+        if (matchedUnitsList.length > 0) {
+          parsedData.suggestedUnits = matchedUnitsList;
+          parsedData.photos = matchedUnitsList.flatMap((u: any) => getPropertyImageGallery(u));
+          if (!parsedData.targetUnitId) {
+            parsedData.targetUnitId = matchedUnitsList[0].id;
+            parsedData.targetUnitTitle = matchedUnitsList[0].title;
+            parsedData.ownerId = matchedUnitsList[0].uploaderId || matchedUnitsList[0].ownerUid || "system";
+          }
+        }
+      }
+
       res.json(parsedData);
     } catch (parseError) {
       console.warn("Failed to parse Gemini response as JSON, applying regex extraction:", parseError);
       const cleanRep = extractCleanResponseString(replyText);
+      const lastUserMsg = (messages[messages.length - 1]?.content || "").toLowerCase();
+      const isPhotoReq = /photo|photos|picture|pictures|image|images|pic|pics|gallery|where.*photo|where.*pic|صورة|صور|صورها|صوره|تصميم|وريني|اشوف|أشوف|معاينة|زيارة|حجز|شكل|شكلها|فين الصور|وين الصور/i.test(lastUserMsg);
+      
+      let candidateUnits = filteredUnits.slice(0, 2);
+      if (targetLoc) {
+        const locUnits = filteredUnits.filter((u: any) => isLocationMatch(u.location, u.title, targetLoc));
+        if (locUnits.length > 0) candidateUnits = locUnits.slice(0, 2);
+      }
+
       res.json({
         response: cleanRep || "Hello and welcome! I am your AI Real Estate Consultant from Broker AI. How can I assist you with your property search today?",
-        qualification: null,
+        qualification: isPhotoReq ? "hot" : null,
+        suggestedUnits: candidateUnits,
+        photos: candidateUnits.flatMap((u: any) => getPropertyImageGallery(u)),
         extractedInfo: {}
       });
     }
@@ -2089,6 +2319,244 @@ Respond STRICTLY with JSON matching the schema.`;
     console.error("Error in /api/scan-legal-document:", err);
     res.status(500).json({ error: "Failed to scan legal document." });
   }
+});
+
+// API Route: Contact Agent -> Real Lead Creation & Owner/Project Routing
+app.post("/api/leads/contact-agent", async (req, res) => {
+  try {
+    const { unitId, propertyId, name, phone, preferredViewingDate, chatId } = req.body || {};
+
+    const targetUnitId = String(unitId || propertyId || "").trim();
+    const rawName = String(name || "").trim();
+    const rawPhone = String(phone || "").trim();
+
+    // 1. Validation: Full Name
+    if (!rawName || rawName.length < 2 || rawName.length > 100) {
+      return res.status(400).json({ 
+        error: "Please enter a valid full name (minimum 2 characters)." 
+      });
+    }
+
+    // 2. Validation: Phone Number
+    const phoneDigits = rawPhone.replace(/[^0-9+]/g, "");
+    if (!rawPhone || phoneDigits.length < 7 || rawPhone.length > 30) {
+      return res.status(400).json({ 
+        error: "Please enter a valid phone number (minimum 7 digits)." 
+      });
+    }
+
+    // 3. Validation: Optional Preferred Viewing Date
+    let resolvedViewingDate: string | null = null;
+    if (preferredViewingDate && typeof preferredViewingDate === "string" && preferredViewingDate.trim() !== "") {
+      const trimmedDate = preferredViewingDate.trim();
+      const parsedDate = new Date(trimmedDate);
+      if (!isNaN(parsedDate.getTime())) {
+        resolvedViewingDate = trimmedDate;
+      }
+    }
+
+    // 4. Validate and resolve Unit / Property from Firestore
+    if (!targetUnitId) {
+      return res.status(400).json({ 
+        error: "Unit ID or Property reference is required to contact the agent." 
+      });
+    }
+
+    const db = getServerDb();
+    if (!db) {
+      return res.status(500).json({ 
+        error: "Database service is temporarily unavailable. Please try again." 
+      });
+    }
+
+    let unitData: any = null;
+    let resolvedUnitDocId = targetUnitId;
+
+    // Check `units` collection
+    try {
+      const unitSnap = await getDoc(doc(db, "units", targetUnitId));
+      if (unitSnap.exists()) {
+        unitData = unitSnap.data();
+        resolvedUnitDocId = unitSnap.id;
+      }
+    } catch (err) {
+      console.warn(`[Contact Agent] Error fetching unit ${targetUnitId}:`, err);
+    }
+
+    // Check `properties` collection if not found in `units`
+    if (!unitData) {
+      try {
+        const propSnap = await getDoc(doc(db, "properties", targetUnitId));
+        if (propSnap.exists()) {
+          unitData = propSnap.data();
+          resolvedUnitDocId = propSnap.id;
+        }
+      } catch (err) {
+        console.warn(`[Contact Agent] Error fetching property ${targetUnitId}:`, err);
+      }
+    }
+
+    // Query units collection for matching ID or title
+    if (!unitData) {
+      try {
+        const unitsQuery = query(collection(db, "units"), limit(50));
+        const allUnitsSnap = await getDocs(unitsQuery);
+        allUnitsSnap.forEach(d => {
+          const data = d.data();
+          if (d.id === targetUnitId || (data.title && data.title.toLowerCase() === targetUnitId.toLowerCase())) {
+            unitData = data;
+            resolvedUnitDocId = d.id;
+          }
+        });
+      } catch (err) {
+        console.warn("[Contact Agent] Fallback query error:", err);
+      }
+    }
+
+    // If unit still not found, check if client provided title / context to create safe fallback
+    if (!unitData) {
+      return res.status(404).json({
+        error: "The selected property was not found in the property registry."
+      });
+    }
+
+    // 5. Project & Developer & Responsible Party Resolution
+    let resolvedProjectId: string | null = unitData.projectId || null;
+    let resolvedDeveloperId: string | null = unitData.developerId || null;
+    let resolvedCompanyId: string | null = unitData.companyId || null;
+
+    // Check if project exists in `projects` collection
+    if (resolvedProjectId) {
+      try {
+        const projectSnap = await getDoc(doc(db, "projects", resolvedProjectId));
+        if (projectSnap.exists()) {
+          const projectData = projectSnap.data();
+          resolvedDeveloperId = resolvedDeveloperId || projectData.developerId || null;
+          resolvedCompanyId = resolvedCompanyId || projectData.companyId || null;
+        }
+      } catch (err) {
+        console.warn(`[Contact Agent] Error fetching project ${resolvedProjectId}:`, err);
+      }
+    }
+
+    // Resolve Developer from projectInfo if available
+    if (!resolvedDeveloperId && unitData.projectInfo?.developerName) {
+      resolvedDeveloperId = unitData.projectInfo.developerName.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    }
+
+    // Derive responsible agent/uploader/owner (NEVER trusting client-supplied owner)
+    const resolvedUploaderId = unitData.uploaderId || 
+                               unitData.brokerUid || 
+                               unitData.ownerId || 
+                               (unitData.contactInfo?.email) || 
+                               "system_broker";
+
+    const resolvedTenantId = unitData.tenantId || 
+                             unitData.uploaderId || 
+                             "default_tenant";
+
+    const resolvedAgentId = unitData.uploaderId || 
+                            unitData.brokerUid || 
+                            unitData.assignedAgentId || 
+                            resolvedUploaderId;
+
+    const unitTitle = unitData.title || unitData.name || "Real Estate Listing";
+    const unitPrice = Number(unitData.price) || 0;
+    const unitPropertyType = unitData.propertyType || "Residential";
+    const unitLocation = unitData.location || (unitData.locationDetails?.city ? `${unitData.locationDetails.city}, Egypt` : "Egypt");
+
+    // 6. Deduplication Check (within recent entries)
+    try {
+      const recentLeadsQuery = query(
+        collection(db, "leads"),
+        where("phone", "==", rawPhone),
+        where("interestedUnitId", "==", resolvedUnitDocId),
+        limit(5)
+      );
+      const recentSnap = await getDocs(recentLeadsQuery);
+      if (!recentSnap.empty) {
+        const existingDoc = recentSnap.docs[0];
+        const existingData = existingDoc.data();
+        return res.json({
+          success: true,
+          lead: {
+            id: existingDoc.id,
+            name: existingData.name,
+            phone: existingData.phone,
+            interestedUnitId: existingData.interestedUnitId,
+            interestedUnitTitle: existingData.interestedUnitTitle,
+            preferredViewingDate: existingData.preferredViewingDate ?? null,
+            source: existingData.source || "property_contact",
+            status: existingData.status || "available"
+          },
+          message: "Request recorded. The agent will contact you shortly."
+        });
+      }
+    } catch (dupErr) {
+      console.warn("[Contact Agent] Deduplication check warning:", dupErr);
+    }
+
+    // 7. Create the REAL Lead in the database
+    const leadPayload: Record<string, any> = {
+      name: rawName,
+      phone: rawPhone,
+      email: `${rawName.toLowerCase().replace(/\s+/g, ".")}@buyer.brokerai.com`,
+      interestedUnitId: resolvedUnitDocId,
+      interestedUnitTitle: unitTitle,
+      propertyId: resolvedUnitDocId,
+      propertyUploaderId: resolvedUploaderId,
+      assignedAgentId: resolvedAgentId,
+      tenantId: resolvedTenantId,
+      preferredViewingDate: resolvedViewingDate || null,
+      source: "property_contact",
+      budget: unitPrice > 0 ? `${unitPrice.toLocaleString()} EGP` : "Contact for Price",
+      propertyType: unitPropertyType,
+      location: unitLocation,
+      qualification: "hot",
+      value: 1000,
+      status: "available",
+      legalPapersRequired: unitData.legalPaperStatus === "verified" || unitData.legalPaperStatus === "verified_boost",
+      chatId: chatId || `contact_${Date.now()}`,
+      createdAt: serverTimestamp()
+    };
+
+    if (resolvedProjectId) leadPayload.projectId = resolvedProjectId;
+    if (resolvedDeveloperId) leadPayload.developerId = resolvedDeveloperId;
+    if (resolvedCompanyId) leadPayload.companyId = resolvedCompanyId;
+
+    const newLeadDoc = await addDoc(collection(db, "leads"), leadPayload);
+
+    console.log(`[Contact Agent] Created Lead ${newLeadDoc.id} for Unit ${resolvedUnitDocId}, Agent ${resolvedUploaderId}, Viewing Date: ${resolvedViewingDate || "None"}`);
+
+    return res.json({
+      success: true,
+      lead: {
+        id: newLeadDoc.id,
+        name: rawName,
+        phone: rawPhone,
+        interestedUnitId: resolvedUnitDocId,
+        interestedUnitTitle: unitTitle,
+        preferredViewingDate: resolvedViewingDate,
+        source: "property_contact",
+        status: "available",
+        propertyUploaderId: resolvedUploaderId,
+        tenantId: resolvedTenantId
+      },
+      message: "Lead created and routed to responsible agent successfully."
+    });
+
+  } catch (err: any) {
+    console.error("[Contact Agent API] Error creating lead:", err);
+    return res.status(500).json({ 
+      error: err?.message || "Failed to submit contact request to agent. Please try again." 
+    });
+  }
+});
+
+// Alias route for versatility
+app.post("/api/contact-agent", (req, res) => {
+  req.url = "/api/leads/contact-agent";
+  return app._router.handle(req, res);
 });
 
 // Vite Dev Server Middleware

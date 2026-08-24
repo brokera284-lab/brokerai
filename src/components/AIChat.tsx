@@ -14,8 +14,11 @@ import { cn } from "../lib/utils";
 import { liquidMetalFragmentShader, ShaderMount } from "@paper-design/shaders";
 import { LiquidMetalButton } from "./LiquidMetalButton";
 import { LiquidMetalCard } from "./LiquidMetalCard";
+import { DEFAULT_UNITS } from "../lib/defaultUnits";
 // @ts-ignore
 import brokerLogo from "../broker.png";
+
+const BROKER_LOGO_URL = "https://lh3.googleusercontent.com/aida-public/AB6AXuCzAzjcZGB7fdUij4_D0Zt0TGOYHlxtPp7d_9iyNTYo4HtplaQqZrQB7CE-FnkRZGm_KWusgZfo6E60SM9euwX9yA_4LZOlOzdxqd5bcKpFniN0qrlnHJ7g9Rb20Ol6du9QDalXh8voMN2-Ogt5s4n4zi2OEglJ7BBpFtlTtnW46qSnytMCbjDB65eSsndcmV8Ki-41hUz1p2-_XLp7X-JktxvcNioC2Icbqky6KHC0Z2k4SaAGngyk44PpEFKqKkaDtg";
 
 function getUnitFallbackImage(propertyType: string): string {
   const type = (propertyType || "").toLowerCase();
@@ -166,6 +169,30 @@ function isPropertyTypeMatch(propertyType: string, propertyTitle: string, target
   return matchingAliases.some(alias => propType.includes(alias) || propTitle.includes(alias));
 }
 
+function extractLocationFromMessages(userMessages: string[]): string {
+  if (!userMessages || userMessages.length === 0) return "";
+  for (let i = userMessages.length - 1; i >= 0; i--) {
+    const msg = (userMessages[i] || "").trim().toLowerCase();
+    if (!msg) continue;
+    if (msg.includes("cairo") || msg.includes("tagamo") || msg.includes("fifth settlement") || msg.includes("new cairo") || msg.includes("90th") || msg.includes("golden square") || msg.includes("rehab") || msg.includes("madinaty") || msg.includes("auc") || msg.includes("القاهرة الجديدة") || msg.includes("التجمع") || msg.includes("التسعين") || msg.includes("الرحاب") || msg.includes("مدينتي") || msg.includes("بيت الوطن")) {
+      return "New Cairo";
+    }
+    if (msg.includes("zayed") || msg.includes("sodic") || msg.includes("beverly hills") || msg.includes("dahshour") || msg.includes("smart village") || msg.includes("zed") || msg.includes("زايد") || msg.includes("الشيخ زايد") || msg.includes("سوديك") || msg.includes("بفرلي") || msg.includes("بيفرلي")) {
+      return "Sheikh Zayed";
+    }
+    if (msg.includes("october") || msg.includes("6 october") || msg.includes("mall of arabia") || msg.includes("mall of egypt") || msg.includes("sun capital") || msg.includes("أكتوبر") || msg.includes("اكتوبر") || msg.includes("٦ أكتوبر") || msg.includes("مول مصر") || msg.includes("مول العرب")) {
+      return "6 October";
+    }
+    if (msg.includes("north coast") || msg.includes("sahel") || msg.includes("ras el hekma") || msg.includes("marassi") || msg.includes("الساحل") || msg.includes("راس الحكمة") || msg.includes("رأس الحكمة") || msg.includes("مراسي")) {
+      return "North Coast";
+    }
+    if (msg.includes("capital") || msg.includes("new capital") || msg.includes("العاصمة") || msg.includes("العاصمة الادارية")) {
+      return "New Capital";
+    }
+  }
+  return "";
+}
+
 const SUGGESTIONS = [
   {
     id: "card-modern-villa",
@@ -243,6 +270,7 @@ interface AIChatProps {
   formatCurrency: (amountInEGP: number) => string;
   onLeadGenerated: (lead: Omit<Lead, "id" | "createdAt">) => Promise<void>;
   onLogoClick?: () => void;
+  onNewChat?: () => void;
   conversations: Record<string, ChatThread>;
   setConversations: React.Dispatch<React.SetStateAction<Record<string, ChatThread>>>;
   activeThreadId: string;
@@ -293,6 +321,9 @@ export default function AIChat({
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [contactViewingDate, setContactViewingDate] = useState("");
+  const [submittedViewingDate, setSubmittedViewingDate] = useState<string | null>(null);
+  const [contactError, setContactError] = useState<string | null>(null);
   const [selectedUnitForContact, setSelectedUnitForContact] = useState<Unit | null>(null);
   const [submittingContact, setSubmittingContact] = useState(false);
   const [contactSubmitted, setContactSubmitted] = useState(false);
@@ -621,7 +652,10 @@ export default function AIChat({
       const botMessage: Message = {
         id: `msg_assistant_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         role: "assistant",
-        content: data.response || "No response received."
+        content: data.response || "No response received.",
+        suggestedUnits: data.suggestedUnits,
+        photos: data.photos,
+        referencedUnitId: data.targetUnitId
       };
 
       // Prepare state variables for extracted data
@@ -897,53 +931,71 @@ export default function AIChat({
     if (!contactName.trim() || !contactPhone.trim()) return;
 
     setSubmittingContact(true);
+    setContactError(null);
     try {
       const targetUnitId = selectedUnitForContact?.id || "";
-      const matchedDbUnit = units.find(u => {
-        if (!u) return false;
-        if (targetUnitId && u.id === targetUnitId) return true;
-        if (selectedUnitForContact?.title && u.title) {
-          const uTitle = u.title.toLowerCase().trim();
-          const sTitle = selectedUnitForContact.title.toLowerCase().trim();
-          return uTitle === sTitle || uTitle.includes(sTitle) || sTitle.includes(uTitle);
-        }
-        return false;
+      const chosenViewingDate = contactViewingDate.trim() ? contactViewingDate.trim() : null;
+
+      // Call secure backend endpoint to create real Lead with derived ownership & viewing date
+      const response = await fetch("/api/leads/contact-agent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          unitId: targetUnitId,
+          propertyId: targetUnitId,
+          name: contactName.trim(),
+          phone: contactPhone.trim(),
+          preferredViewingDate: chosenViewingDate,
+          chatId: activeThread?.id || "direct_contact"
+        })
       });
 
-      // The lead MUST belong to the CRM/tenant that owns the property
-      const propUploaderId = matchedDbUnit?.uploaderId || 
-                             selectedUnitForContact?.uploaderId || 
-                             (selectedUnitForContact as any)?.ownerUid || 
-                             (selectedUnitForContact as any)?.ownerId || 
-                             "guest_broker_user";
+      const data = await response.json();
 
-      const propTenantId = matchedDbUnit?.tenantId || 
-                           selectedUnitForContact?.tenantId || 
-                           (selectedUnitForContact as any)?.tenantId || 
-                           propUploaderId;
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to submit contact request to the agent.");
+      }
 
-      const propId = matchedDbUnit?.id || targetUnitId || "";
+      const createdLead = data.lead;
+      const viewingDateConfirmed = createdLead?.preferredViewingDate || chosenViewingDate;
+      setSubmittedViewingDate(viewingDateConfirmed);
 
-      const finalLead: Omit<Lead, "id" | "createdAt"> = {
-        name: contactName,
-        email: `${contactName.toLowerCase().replace(/\s+/g, ".")}@gmail.com`,
-        phone: contactPhone,
-        chatId: activeThread.id,
-        budget: extracted.budget || "Flexible",
-        propertyType: selectedUnitForContact?.propertyType || extracted.propertyType || "Residential",
-        location: selectedUnitForContact?.location || extracted.location || "Prime Spot",
-        legalPapersRequired: !!extracted.legalPapersRequired,
-        qualification: qualification || "hot",
-        value: qualificationValue || 1000,
-        status: "available",
-        interestedUnitTitle: selectedUnitForContact?.title || matchedDbUnit?.title || "Direct Catalog Match",
-        interestedUnitId: propId,
-        propertyId: propId,
-        tenantId: propTenantId,
-        propertyUploaderId: propUploaderId
-      };
+      // Notify frontend handler / data state with the real lead
+      if (createdLead) {
+        const leadToSync: any = {
+          name: createdLead.name,
+          email: createdLead.email || `${contactName.trim().toLowerCase().replace(/\s+/g, ".")}@buyer.brokerai.com`,
+          phone: createdLead.phone || contactPhone.trim(),
+          chatId: activeThread?.id || "direct_contact",
+          budget: createdLead.budget || "Contact for Price",
+          propertyType: createdLead.propertyType || selectedUnitForContact?.propertyType || "Residential",
+          location: createdLead.location || selectedUnitForContact?.location || "Egypt",
+          legalPapersRequired: !!createdLead.legalPapersRequired,
+          qualification: createdLead.qualification || "hot",
+          value: createdLead.value || 1000,
+          status: createdLead.status || "available",
+          interestedUnitTitle: createdLead.interestedUnitTitle || selectedUnitForContact?.title || "Property Listing",
+          interestedUnitId: createdLead.interestedUnitId || targetUnitId,
+          propertyId: createdLead.propertyId || targetUnitId,
+          preferredViewingDate: viewingDateConfirmed || null,
+          source: createdLead.source || "property_contact"
+        };
 
-      await onLeadGenerated(finalLead);
+        if (createdLead.projectId) leadToSync.projectId = createdLead.projectId;
+        if (createdLead.developerId) leadToSync.developerId = createdLead.developerId;
+        if (createdLead.companyId) leadToSync.companyId = createdLead.companyId;
+        if (createdLead.tenantId || selectedUnitForContact?.tenantId) {
+          leadToSync.tenantId = createdLead.tenantId || selectedUnitForContact?.tenantId;
+        }
+        if (createdLead.propertyUploaderId || selectedUnitForContact?.uploaderId) {
+          leadToSync.propertyUploaderId = createdLead.propertyUploaderId || selectedUnitForContact?.uploaderId;
+        }
+        if (createdLead.assignedAgentId) leadToSync.assignedAgentId = createdLead.assignedAgentId;
+
+        await onLeadGenerated(leadToSync);
+      }
 
       setConversations(prev => ({
         ...prev,
@@ -959,11 +1011,15 @@ export default function AIChat({
         setContactSubmitted(false);
         setContactName("");
         setContactPhone("");
+        setContactViewingDate("");
+        setSubmittedViewingDate(null);
         setSelectedUnitForContact(null);
-      }, 2500);
+        setContactError(null);
+      }, 3500);
 
-    } catch (err) {
-      console.error("Error generating lead:", err);
+    } catch (err: any) {
+      console.error("[Contact Agent] Failed to create lead:", err);
+      setContactError(err?.message || "Failed to send request. Please check your details and try again.");
     } finally {
       setSubmittingContact(false);
     }
@@ -976,12 +1032,22 @@ export default function AIChat({
   };
 
   interface ParsedProperty {
+    id?: string;
     title: string;
     location: string;
     price: string;
     isVerified: boolean;
     imageUrl: string;
+    images?: string[];
     description: string;
+    propertyType?: string;
+    ownerName?: string;
+    ownerPhone?: string;
+    bedrooms?: number;
+    bathrooms?: number;
+    area?: number;
+    uploaderId?: string;
+    tenantId?: string;
   }
 
   const parsePropertiesFromMessage = (content: string) => {
@@ -1149,7 +1215,7 @@ export default function AIChat({
         <div className="flex-1 overflow-y-auto scrollbar-thin relative p-4 md:p-6 lg:p-8 flex flex-col">
           
           {/* ========================================== */}
-          {/* INNER STATE 1: EMPTY GREETING */}
+          {/* INNER STATE 1: EMPTY GREETING & DASHBOARD */}
           {/* ========================================== */}
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
@@ -1159,21 +1225,63 @@ export default function AIChat({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: -15 }}
                 transition={{ duration: 0.35, ease: "easeOut" }}
-                className="w-full my-auto flex flex-col items-center justify-center text-white py-6 md:py-12"
+                className="flex-grow flex flex-col items-center justify-center px-3 sm:px-4 md:px-6 pb-8 md:pb-12 w-full max-w-4xl mx-auto relative z-10 my-auto text-center"
               >
-                
-                {/* Stitch Greeting */}
-                <div className="flex-1 max-w-4xl mx-auto w-full px-6 flex flex-col items-center justify-center text-center space-y-8 select-none">
-                  <div className="space-y-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#c4c7c8]/60 font-mono">
-                      Conversational Real Estate Intelligence
-                    </span>
-                    <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-white tracking-tight font-black">
-                      How can I help you today?
-                    </h2>
-                  </div>
+                {/* Hero Title */}
+                <div className="text-center mb-6 sm:mb-8 md:mb-14">
+                  <p className="font-secondary text-[10px] sm:text-[12px] text-[#c4c7c7] mb-2 sm:mb-3 tracking-widest uppercase">
+                    CONVERSATIONAL REAL ESTATE INTELLIGENCE
+                  </p>
+                  <h2 className="text-2xl sm:text-3xl md:text-[46px] font-bold text-[#e2e2e4] tracking-tight leading-tight md:leading-[54px] font-sans mt-0 -mb-4">
+                    What is your Dream house?
+                  </h2>
                 </div>
 
+                {/* Main Centered Input Area */}
+                <div className="w-full max-w-3xl mb-6 sm:mb-8 relative group text-left">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (input.trim() && !loading) {
+                        submitQuery(input.trim());
+                      }
+                    }}
+                    className="glass-input rounded-xl border border-[#444748] flex items-center p-2.5 sm:p-3.5 pr-3 sm:pr-4 md:p-4 md:pr-6 transition-all duration-300 relative z-20 h-[49px] mt-[100px] mb-0"
+                  >
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Ask Broker AI (e.g. 3-bedroom villa in Zayed)"
+                      disabled={loading}
+                      className="flex-grow bg-transparent border-none text-[11px] text-[#e2e2e4] focus:ring-0 placeholder:text-[#c4c7c7]/50 p-2 outline-none font-sans"
+                    />
+                    <div className="flex items-center gap-2 ml-2 sm:ml-3">
+                      <button
+                        type="submit"
+                        disabled={!input.trim() || loading}
+                        className="p-2 text-[#c4c7c7] hover:text-[#00D18E] rounded-lg transition-colors border border-transparent hover:border-[#444748] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
+                        title="Send query"
+                      >
+                        <span className="material-symbols-outlined text-[22px] pl-0 -mr-[7px] pb-0 mb-0 mt-1">send</span>
+                      </button>
+                    </div>
+                  </form>
+                  {/* Glowing hover accent */}
+                  <div className="absolute inset-0 bg-[#00D18E]/5 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
+                </div>
+
+                {/* Empty State Footer */}
+                <div className="w-full flex flex-col items-center gap-1.5 text-center select-none">
+                  <p className="text-[#c4c7c7] text-[9px] text-center max-w-lg">
+                    Broker AI can make mistakes. Verify important financial details and licenses.
+                  </p>
+                  <div className="flex gap-4">
+                    <a className="text-[#c4c7c7] hover:text-[#00D18E] hover:underline text-[10px] sm:text-[11px] transition-colors" href="#" onClick={(e) => e.preventDefault()}>Terms</a>
+                    <a className="text-[#c4c7c7] hover:text-[#00D18E] hover:underline text-[10px] sm:text-[11px] transition-colors" href="#" onClick={(e) => e.preventDefault()}>Privacy</a>
+                    <a className="text-[#c4c7c7] hover:text-[#00D18E] hover:underline text-[10px] sm:text-[11px] transition-colors" href="#" onClick={(e) => e.preventDefault()}>Support</a>
+                  </div>
+                </div>
               </motion.div>
             ) : (
               // ==========================================
@@ -1197,46 +1305,59 @@ export default function AIChat({
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25 }}
-                      className={`flex gap-4 md:gap-6 ${isBot ? "" : "justify-end"}`}
+                      className={cn(
+                        "flex gap-3 md:gap-4 max-w-[85%]",
+                        isBot ? "" : "self-end justify-end ml-auto"
+                      )}
                     >
                       {/* Left Avatar for Bot */}
                       {isBot && (
-                        <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/20 shadow-md flex items-center justify-center shrink-0 hover:border-white/45 transition-colors duration-300">
-                          <Sparkles size={15} className="text-white" />
+                        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-[#1e2021] border border-[#444748]/30 flex items-center justify-center shadow-[0_0_15px_rgba(0,209,142,0.08)]">
+                          <img 
+                            src={BROKER_LOGO_URL} 
+                            alt="Broker AI" 
+                            className="w-6 h-6 object-contain" 
+                            onError={(e) => { e.currentTarget.src = "/black.png"; }}
+                          />
                         </div>
                       )}
 
-                      {/* Chat message body with ChatGPT styling */}
+                      {/* Chat message body */}
                       {(() => {
                         const { cleanText, properties } = parsePropertiesFromMessage(m.content);
 
                         return (
-                          <div className={`flex flex-col ${isBot ? "flex-1 max-w-[85%]" : "max-w-[75%]"}`}>
-                            {/* Name Header */}
-                            <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1 px-1 font-mono flex items-center justify-between">
-                              <span>{isBot ? "Broker Assistant" : "Prospect Explorer"}</span>
-                              {!isBot && editingIndex !== i && (
-                                <button
-                                  onClick={() => {
-                                    setEditingIndex(i);
-                                    setEditingText(m.content);
-                                  }}
-                                  className="text-slate-400 hover:text-white ml-2 transition-colors flex items-center gap-1 text-[10px] font-normal font-sans cursor-pointer"
-                                  title="Edit message"
-                                >
-                                  <Pencil size={11} className="inline" />
-                                  <span>Edit</span>
-                                </button>
-                              )}
-                            </span>
+                          <div className={cn("flex flex-col gap-1", isBot ? "flex-1" : "items-end")}>
+                            {/* Header label & Edit option */}
+                            {isBot ? (
+                              <span className="font-secondary text-[10px] text-[#c4c7c7] ml-1 tracking-wider uppercase font-medium">
+                                BROKER AI CORE
+                              </span>
+                            ) : (
+                              editingIndex !== i && (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <button
+                                    onClick={() => {
+                                      setEditingIndex(i);
+                                      setEditingText(m.content);
+                                    }}
+                                    className="text-[#c4c7c7] hover:text-[#00D18E] transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="Edit message"
+                                  >
+                                    <span className="material-symbols-outlined text-[12px]">edit</span>
+                                    <span className="font-secondary text-[10px] tracking-wider">Edit</span>
+                                  </button>
+                                </div>
+                              )
+                            )}
 
-                             {/* Speech Bubble or Editing State with Liquid Glass styling */}
+                             {/* Speech Bubble or Editing State */}
                              {editingIndex === i ? (
-                               <div className="w-full mt-1.5 mb-2 flex flex-col gap-2">
+                               <div className="w-full min-w-[280px] md:min-w-[340px] flex flex-col gap-2">
                                  <textarea
                                    value={editingText}
                                    onChange={(e) => setEditingText(e.target.value)}
-                                   className="w-full min-h-[80px] bg-white/[0.05] border border-white/20 rounded-xl p-3 text-white text-[13.5px] outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-sans resize-none shadow-inner"
+                                   className="w-full min-h-[80px] bg-[#1e2021] border border-[#444748] rounded-xl p-3 text-[#e2e2e4] text-[14px] outline-none focus:border-[#00D18E] transition-all font-sans resize-none shadow-inner"
                                  />
                                  <div className="flex gap-2 justify-end">
                                    <button
@@ -1244,14 +1365,14 @@ export default function AIChat({
                                        setEditingIndex(null);
                                        setEditingText("");
                                      }}
-                                     className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors font-sans font-medium"
+                                     className="px-3 py-1.5 rounded-lg bg-[#333537] hover:bg-[#444748] text-[#e2e2e4] text-xs transition-colors font-sans font-medium cursor-pointer"
                                    >
                                      Cancel
                                    </button>
                                    <button
                                      onClick={() => handleEditSubmit(i)}
                                      disabled={loading || !editingText.trim()}
-                                     className="px-3 py-1.5 rounded-lg bg-white text-black font-semibold hover:bg-slate-200 text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 font-sans"
+                                     className="px-3 py-1.5 rounded-lg bg-[#00D18E] text-black font-semibold hover:bg-[#00b87c] text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 font-sans cursor-pointer"
                                    >
                                      {loading && <Loader2 size={11} className="animate-spin" />}
                                      Save & Resend
@@ -1261,14 +1382,14 @@ export default function AIChat({
                              ) : (
                                <div 
                                  className={cn(
-                                   "p-5 rounded-2xl leading-relaxed text-[13.5px] transition-all relative shadow-lg backdrop-blur-md text-left",
+                                   "p-4 font-sans text-[15px] leading-[22px] transition-all text-left",
                                    isBot 
-                                     ? "glass-card border border-white/[0.08] text-slate-100 rounded-tl-none hover:border-white/20 hover:shadow-[0_0_20px_rgba(255,255,255,0.03)]" 
-                                     : "glass-card border border-white/[0.12] bg-white/[0.06] text-white rounded-tr-none hover:border-white/25 hover:shadow-[0_0_20px_rgba(255,255,255,0.04)]"
+                                     ? "bg-[#1a1c1d] border border-[#444748]/50 border-l-2 border-l-[#00D18E] rounded-2xl rounded-tl-sm text-[#e2e2e4]" 
+                                     : "bg-[#333537] rounded-2xl rounded-tr-sm text-[#e2e2e4] shadow-sm border border-[#444748]/30"
                                  )}
                                >
                                  {renderMessageWithImages(cleanText || m.content)}
-                               </div>
+                                </div>
                              )}
 
                             {/* Beautiful Glassmorphic Property Cards Underneath the Message Bubble Matching Reference Design */}
@@ -1277,21 +1398,63 @@ export default function AIChat({
 
                               let displayProps = [...properties];
                               
-                              // Check ONLY the preceding user message for THIS assistant message to prevent historic message re-ordering/shifting
-                              if (displayProps.length === 0 && units.length > 0) {
+                              // 1. Check if suggestedUnits was explicitly attached to this assistant message
+                              if (m.suggestedUnits && Array.isArray(m.suggestedUnits) && m.suggestedUnits.length > 0) {
+                                displayProps = m.suggestedUnits.map((u: any) => ({
+                                  id: u.id,
+                                  title: u.title,
+                                  location: u.location,
+                                  price: typeof u.price === "number" ? formatCurrency(u.price) : u.price,
+                                  isVerified: true,
+                                  imageUrl: u.imageUrl || getUnitFallbackImage(u.propertyType),
+                                  images: getPropertyImageGallery(u),
+                                  description: u.description || u.title,
+                                  propertyType: u.propertyType,
+                                  ownerName: u.ownerName,
+                                  ownerPhone: u.ownerPhone,
+                                  uploaderId: u.uploaderId,
+                                  tenantId: u.tenantId
+                                }));
+                              }
+
+                              // 2. Check preceding user message OR current bot message for photo / property / project requests in Arabic and English
+                              if (displayProps.length === 0) {
                                 const precedingUserMsg = (i > 0 && messages[i - 1]?.role === "user") ? messages[i - 1].content : "";
+                                const botMsgContent = m.content || "";
+                                const allHistory = messages.slice(0, i + 1).map(x => x.content).join(" ");
                                 
-                                const isReqPhotoOrVisit = /photo|picture|image|visit|book|appointment/i.test(precedingUserMsg);
+                                const isReqPhotoOrVisit = 
+                                  /photo|photos|picture|pictures|image|images|pic|pics|gallery|visit|book|appointment|where.*photo|where.*pic|صورة|صور|صورها|صوره|تصميم|وريني|اشوف|أشوف|معاينة|زيارة|حجز|شكل|شكلها|فين الصور|وين الصور/i.test(precedingUserMsg) ||
+                                  /صورة|صور|صورها|تصميم|تصميم المشروع|معاينة|gallery|photo|photos|picture|pictures|image|images/i.test(botMsgContent) ||
+                                  /الشيخ زايد|زايد|التجمع|القاهرة الجديدة|الساحل|اكتوبر|العاصمة|zayed|cairo|october/i.test(botMsgContent);
 
                                 if (isReqPhotoOrVisit) {
-                                  units.slice(0, 2).forEach(u => {
+                                  const rawUnits = (units && units.length > 0) ? units : DEFAULT_UNITS;
+                                  let candidateUnits = rawUnits.filter((u: any) => u && u.visibility !== "private");
+                                  
+                                  const detectedLoc = extractLocationFromMessages([precedingUserMsg, botMsgContent, allHistory]);
+                                  if (detectedLoc) {
+                                    const locMatches = candidateUnits.filter((u: any) => isLocationMatch(u.location, u.title, detectedLoc));
+                                    if (locMatches.length > 0) {
+                                      candidateUnits = locMatches;
+                                    }
+                                  }
+                                  
+                                  candidateUnits.slice(0, 2).forEach(u => {
                                     displayProps.push({
+                                      id: u.id,
                                       title: u.title,
                                       location: u.location,
-                                      price: formatCurrency(u.price),
+                                      price: typeof u.price === "number" ? formatCurrency(u.price) : u.price,
                                       isVerified: true,
                                       imageUrl: u.imageUrl || getUnitFallbackImage(u.propertyType),
-                                      description: u.description || u.title
+                                      images: getPropertyImageGallery(u),
+                                      description: u.description || u.title,
+                                      propertyType: u.propertyType,
+                                      ownerName: u.ownerName,
+                                      ownerPhone: u.ownerPhone,
+                                      uploaderId: u.uploaderId,
+                                      tenantId: u.tenantId
                                     });
                                   });
                                 }
@@ -1303,19 +1466,20 @@ export default function AIChat({
                                 <div className="space-y-4 mt-3.5 mb-2 text-left">
                                   {displayProps.map((prop: any, propIdx) => {
                                     const titleLower = (prop.title || "").toLowerCase().trim();
-                                    const matchedUnit = units.find(u => {
+                                    const rawUnits = (units && units.length > 0) ? units : DEFAULT_UNITS;
+                                    const matchedUnit = rawUnits.find(u => {
                                       if (!u) return false;
                                       if (prop.id && u.id === prop.id) return true;
                                       const dbTitle = (u.title || "").toLowerCase().trim();
                                       return dbTitle.length > 0 && (dbTitle.includes(titleLower) || titleLower.includes(dbTitle));
                                     });
 
-                                    const isVilla = (matchedUnit?.propertyType || "").toLowerCase().includes("villa") || 
+                                    const isVilla = (matchedUnit?.propertyType || prop.propertyType || "").toLowerCase().includes("villa") || 
                                                     (matchedUnit?.price || 0) > 10000000 || 
                                                     titleLower.includes("villa");
                                     const beds = matchedUnit?.details?.bedrooms || (isVilla ? 3 : 2);
                                     const baths = matchedUnit?.details?.bathrooms || (isVilla ? 2 : 2);
-                                    const refCode = prop.refCode || (matchedUnit?.id ? matchedUnit.id.slice(-5).toUpperCase() : "132UP");
+                                    const refCode = prop.refCode || (matchedUnit?.id ? matchedUnit.id.slice(-5).toUpperCase() : (prop.id ? prop.id.slice(-5).toUpperCase() : "132UP"));
 
                                     const displayPrice = matchedUnit ? formatCurrency(matchedUnit.price) : (prop.price || "4,500,000 EGP");
                                     const displayLocation = matchedUnit?.location || prop.location || "Sheikh Zayed, Giza";
@@ -1396,6 +1560,39 @@ export default function AIChat({
                                           </div>
                                         </div>
 
+                                        {/* Multi-Photo Thumbnail Strip */}
+                                        {gallery.length > 1 && (
+                                          <div className="flex items-center gap-1.5 px-3 py-2 bg-black/50 border-b border-white/10 overflow-x-auto no-scrollbar">
+                                            {gallery.slice(0, 4).map((imgUrl, gIdx) => (
+                                              <div 
+                                                key={`thumb-${gIdx}`}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const targetUnit = matchedUnit || prop;
+                                                  setSelectedPropertyForDetails(targetUnit);
+                                                  setActivePhotoIndex(gIdx);
+                                                }}
+                                                className="w-12 h-9 rounded-lg overflow-hidden border border-white/15 hover:border-emerald-400 shrink-0 cursor-pointer relative group/thumb transition-all"
+                                              >
+                                                <img src={imgUrl} alt={`Thumb ${gIdx}`} className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform" />
+                                              </div>
+                                            ))}
+                                            {gallery.length > 4 && (
+                                              <div 
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const targetUnit = matchedUnit || prop;
+                                                  setSelectedPropertyForDetails(targetUnit);
+                                                  setActivePhotoIndex(4);
+                                                }}
+                                                className="w-12 h-9 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-[10px] font-bold text-white flex items-center justify-center shrink-0 cursor-pointer"
+                                              >
+                                                +{gallery.length - 4}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
                                         {/* Card Body */}
                                         <div className="p-4 space-y-3.5">
                                           <div>
@@ -1458,57 +1655,58 @@ export default function AIChat({
                               );
                             })()}
 
-                            {/* Bottom Utility Actions Toolbar (ChatGPT Style) */}
+                            {/* Bottom Utility Actions Toolbar Matching Reference Design */}
                             {isBot && (
-                              <div className="flex items-center gap-3.5 mt-2 px-1 text-slate-500">
+                              <div className="flex items-center gap-3 ml-1 mt-1 text-[#c4c7c7]">
                                 {/* Copy button */}
                                 <button
                                   onClick={() => copyToClipboard(m.content, i)}
-                                  className="hover:text-white transition flex items-center gap-1 cursor-pointer text-xs"
+                                  className="hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
                                   title="Copy response"
                                 >
-                                  {copiedIndex === i ? (
-                                    <>
-                                      <Check size={12} className="text-emerald-400" />
-                                      <span className="text-[10px] text-emerald-400 font-bold font-mono">Copied</span>
-                                    </>
-                                  ) : (
-                                    <Copy size={12} />
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    {copiedIndex === i ? "check" : "content_copy"}
+                                  </span>
+                                  {copiedIndex === i && (
+                                    <span className="text-[10px] text-[#00D18E] font-secondary">Copied</span>
                                   )}
                                 </button>
 
                                 {/* Speech synthesis Read Aloud */}
                                 <button
                                   onClick={() => speakMessage(m.content, i)}
-                                  className={`hover:text-white transition flex items-center gap-1 cursor-pointer text-xs ${
-                                    speakingIndex === i ? "text-white" : ""
-                                  }`}
+                                  className={cn(
+                                    "hover:text-white transition-colors flex items-center gap-1 cursor-pointer",
+                                    speakingIndex === i && "text-[#00D18E]"
+                                  )}
                                   title={speakingIndex === i ? "Stop speaking" : "Read response aloud"}
                                 >
-                                  <Volume2 size={12} className={speakingIndex === i ? "animate-pulse text-white" : ""} />
+                                  <span className="material-symbols-outlined text-[16px]">volume_up</span>
                                   {speakingIndex === i && (
-                                    <span className="text-[10px] text-white font-bold font-mono">Speaking</span>
+                                    <span className="text-[10px] text-[#00D18E] font-secondary animate-pulse">Speaking</span>
                                   )}
                                 </button>
 
                                 {/* Thumbs Feedback */}
                                 <button
                                   onClick={() => handleFeedback(i, "up")}
-                                  className={`hover:text-emerald-400 transition cursor-pointer ${
-                                    likedMessages[i] === "up" ? "text-emerald-400" : ""
-                                  }`}
+                                  className={cn(
+                                    "hover:text-[#00D18E] transition-colors cursor-pointer",
+                                    likedMessages[i] === "up" && "text-[#00D18E]"
+                                  )}
                                   title="Thumbs Up"
                                 >
-                                  <ThumbsUp size={11} />
+                                  <span className="material-symbols-outlined text-[16px]">thumb_up</span>
                                 </button>
                                 <button
                                   onClick={() => handleFeedback(i, "down")}
-                                  className={`hover:text-red-400 transition cursor-pointer ${
-                                    likedMessages[i] === "down" ? "text-red-400" : ""
-                                  }`}
+                                  className={cn(
+                                    "hover:text-[#ffb4ab] transition-colors cursor-pointer",
+                                    likedMessages[i] === "down" && "text-[#ffb4ab]"
+                                  )}
                                   title="Thumbs Down"
                                 >
-                                  <ThumbsDown size={11} />
+                                  <span className="material-symbols-outlined text-[16px]">thumb_down</span>
                                 </button>
                               </div>
                             )}
@@ -1518,24 +1716,20 @@ export default function AIChat({
 
                       {/* Right Avatar for User */}
                       {!isBot && (
-                        currentUser ? (
-                          currentUser.photoURL ? (
+                        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-[#444748]/50 bg-[#282a2c] flex items-center justify-center">
+                          {currentUser?.photoURL ? (
                             <img 
                               src={currentUser.photoURL} 
                               alt="User" 
-                              className="w-9 h-9 rounded-full border border-white/20 shadow-md object-cover shrink-0 hover:border-white/45 transition-colors duration-300"
+                              className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"
                             />
                           ) : (
-                            <div className="w-9 h-9 rounded-full bg-white/10 border border-white/25 flex items-center justify-center text-xs font-black text-white uppercase font-mono shrink-0 hover:border-white/45 transition-colors duration-300">
-                              {currentUser.displayName ? currentUser.displayName[0] : (currentUser.email ? currentUser.email[0] : "U")}
-                            </div>
-                          )
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center text-xs font-black text-slate-300 font-mono shrink-0 hover:border-white/35 transition-colors duration-300">
-                            U
-                          </div>
-                        )
+                            <span className="font-secondary text-xs font-bold text-[#e2e2e4] uppercase">
+                              {currentUser?.displayName ? currentUser.displayName[0] : (currentUser?.email ? currentUser.email[0] : "U")}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </motion.div>
                   );
@@ -1544,19 +1738,24 @@ export default function AIChat({
 
               {/* Bot loading state */}
               {loading && (
-                <div className="flex gap-4 md:gap-6">
-                  <div className="w-9 h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-white/50 shrink-0">
-                    <RefreshCw size={14} className="animate-spin" />
+                <div className="flex gap-3 md:gap-4 max-w-[85%] opacity-70">
+                  <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-[#1e2021] border border-[#444748]/30">
+                    <img 
+                      src={BROKER_LOGO_URL} 
+                      alt="Broker AI" 
+                      className="w-6 h-6 object-contain" 
+                      onError={(e) => { e.currentTarget.src = "/black.png"; }}
+                    />
                   </div>
-                  <div className="flex-1 max-w-[85%]">
-                    <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1 font-mono">Broker AI Core</span>
-                    <div className="glass-card border border-white/[0.08] text-slate-400 italic rounded-2xl rounded-tl-none p-5 text-[13.5px] shadow-sm flex items-center gap-3">
-                      <div className="flex space-x-1 shrink-0">
-                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <div className="flex flex-col gap-1 w-full">
+                    <span className="font-secondary text-[10px] text-[#c4c7c7] ml-1 tracking-wider uppercase font-medium">BROKER AI CORE</span>
+                    <div className="bg-[#0c0e10] border border-[#444748]/20 rounded-xl p-3 font-sans text-sm text-[#c4c7c7] italic flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#c4c7c7]/50 animate-pulse"></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#c4c7c7]/50 animate-pulse" style={{ animationDelay: "150ms" }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#c4c7c7]/50 animate-pulse" style={{ animationDelay: "300ms" }}></div>
                       </div>
-                      <span>Analyzing credentials & extracting legal registry parameters...</span>
+                      <span>thinking...</span>
                     </div>
                   </div>
                 </div>
@@ -1570,172 +1769,129 @@ export default function AIChat({
         </div>
 
         {/* ========================================== */}
-        {/* CENTER BOTTOM FLOATING INPUT ZONE */}
+        {/* CENTER BOTTOM FLOATING INPUT ZONE (ACTIVE MODE) */}
         {/* ========================================== */}
-        <footer className="custom-console-wrap select-none z-20">
-          <div className="max-w-4xl mx-auto w-full relative">
-            
-            {/* Command Suggestions Overlay */}
-            <AnimatePresence>
-              {showCommandPalette && (
-                <motion.div 
-                  ref={commandPaletteRef}
-                  className="absolute left-4 right-4 bottom-full mb-3 backdrop-blur-xl bg-slate-950/95 rounded-xl z-50 shadow-2xl border border-white/10 overflow-hidden"
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 5 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <div className="py-2 bg-slate-950/95">
-                    <p className="px-3.5 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Suggested Commands</p>
-                    {commandSuggestions.map((suggestion, index) => (
+        {messages.length > 0 && (
+          <footer className="w-full px-4 pt-2 pb-4 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent select-none z-20">
+            <div className="max-w-4xl mx-auto w-full relative">
+              
+              {/* Command Suggestions Overlay */}
+              <AnimatePresence>
+                {showCommandPalette && (
+                  <motion.div 
+                    ref={commandPaletteRef}
+                    className="absolute left-4 right-4 bottom-full mb-3 backdrop-blur-xl bg-[#121212] rounded-xl z-50 shadow-2xl border border-[#444748] overflow-hidden"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <div className="py-2 bg-[#121212]">
+                      <p className="px-3.5 py-1 text-[9px] font-bold text-[#c4c7c7] uppercase tracking-widest font-secondary">Suggested Commands</p>
+                      {commandSuggestions.map((suggestion, index) => (
+                        <motion.div
+                          key={suggestion.prefix}
+                          className={cn(
+                            "flex items-center gap-3 px-3.5 py-2.5 text-xs transition-colors cursor-pointer",
+                            activeSuggestion === index 
+                              ? "bg-[#00D18E]/20 text-white border-l-2 border-[#00D18E]" 
+                              : "text-[#e2e2e4] hover:bg-white/5"
+                          )}
+                          onClick={() => selectCommandSuggestion(index)}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: index * 0.03 }}
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center text-[#c4c7c7] shrink-0">
+                            {suggestion.icon}
+                          </div>
+                          <div className="flex-1">
+                            <span className="font-semibold">{suggestion.label}</span>
+                            <span className="text-[10px] text-[#c4c7c7] ml-2">— {suggestion.description}</span>
+                          </div>
+                          <div className="text-[#00D18E] font-secondary text-[10px] bg-[#00D18E]/10 px-1.5 py-0.5 rounded">
+                            {suggestion.prefix}
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Attachments Horizontal Chip list */}
+              <AnimatePresence>
+                {attachments.length > 0 && (
+                  <motion.div 
+                    className="px-2 pb-3 flex gap-2 flex-wrap pt-1"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    {attachments.map((file, index) => (
                       <motion.div
-                        key={suggestion.prefix}
-                        className={cn(
-                          "flex items-center gap-3 px-3.5 py-2.5 text-xs transition-colors cursor-pointer",
-                          activeSuggestion === index 
-                            ? "bg-blue-600/25 text-white border-l-2 border-blue-500" 
-                            : "text-slate-300 hover:bg-white/5"
-                        )}
-                        onClick={() => selectCommandSuggestion(index)}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: index * 0.03 }}
+                        key={`${file}-${index}`}
+                        className="flex items-center gap-2 text-xs bg-[#1e2021] border border-[#444748] py-1.5 px-3 rounded-lg text-[#e2e2e4]"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
                       >
-                        <div className="w-5 h-5 flex items-center justify-center text-slate-400 shrink-0">
-                          {suggestion.icon}
-                        </div>
-                        <div className="flex-1">
-                          <span className="font-semibold">{suggestion.label}</span>
-                          <span className="text-[10px] text-slate-500 ml-2">— {suggestion.description}</span>
-                        </div>
-                        <div className="text-blue-400 font-mono text-[10px] bg-blue-500/10 px-1.5 py-0.5 rounded">
-                          {suggestion.prefix}
-                        </div>
+                        <span className="truncate max-w-[150px] font-secondary text-[11px]">{file}</span>
+                        <button 
+                          type="button"
+                          onClick={() => removeAttachment(index)}
+                          className="text-[#c4c7c7] hover:text-white transition-colors cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
                       </motion.div>
                     ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* Attachments Horizontal Chip list */}
-            <AnimatePresence>
-              {attachments.length > 0 && (
-                <motion.div 
-                  className="px-4 pb-3 flex gap-2 flex-wrap pt-2"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                >
-                  {attachments.map((file, index) => (
-                    <motion.div
-                      key={`${file}-${index}`}
-                      className="flex items-center gap-2 text-xs bg-white/[0.04] border border-white/5 py-1.5 px-3 rounded-lg text-slate-200"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                    >
-                      <span className="truncate max-w-[150px] font-mono text-[11px]">{file}</span>
-                      <button 
-                        type="button"
-                        onClick={() => removeAttachment(index)}
-                        className="text-slate-500 hover:text-white transition-colors cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Quick Suggestions Circles removed */}
-
-            <div 
-              className={cn(
-                "relative w-full rounded-full transition-all duration-300 flex items-center gap-3 border bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.05] hover:border-white/20 hover:shadow-[0_0_20px_rgba(255,255,255,0.06)] px-6 py-2 min-h-[58px]",
-                inputFocused && "bg-white/[0.08] border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.06)]"
-              )}
-            >
-              {/* Paperclip button styled with glass-icon wrapper */}
-              <div className="p-2 rounded-lg glass-icon cursor-pointer flex items-center justify-center">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                  className="hidden" 
-                  multiple 
-                />
-                <svg 
-                  onClick={handleAttachFile}
-                  className="w-4.5 h-4.5 text-[#F5F7FA] shrink-0" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="1.6"
-                  title="Attach deeds or licenses"
-                >
-                  <path d="M21 12.5V7a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v11a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-1"/>
-                  <path d="M12 8v8M8 12h8"/>
-                </svg>
-              </div>
-
-              <input 
-                type="text" 
-                ref={textareaRef as any}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
-                placeholder="Ask Broker AI"
-                disabled={loading}
-                className="bg-transparent text-white border-none outline-none flex-1 font-medium placeholder-slate-400 z-10 py-2 text-[14px]"
-              />
-
-              {/* Command suggestions button styled with glass-icon wrapper */}
-              <div className={cn(
-                "p-2 rounded-lg glass-icon cursor-pointer flex items-center justify-center",
-                showCommandPalette && "bg-white/[0.08] border-white/20"
-              )}>
-                <svg 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowCommandPalette(prev => !prev);
-                  }}
-                  className="w-4.5 h-4.5 text-[#F5F7FA] shrink-0" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="1.6"
-                  title="Suggested commands"
-                >
-                  <rect x="4" y="4" width="16" height="16" rx="4"/>
-                  <path d="M9 9h.01M15 9h.01M9 15h6"/>
-                </svg>
-              </div>
-
-              <div className="shrink-0">
-                <button
-                  onClick={() => {
+              <div className="relative group w-full">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
                     if (input.trim() && !loading) {
-                      submitQuery(input);
+                      submitQuery(input.trim());
                     }
                   }}
-                  disabled={!input.trim() || loading}
-                  className="w-11 h-11 rounded-full flex items-center justify-center glass-icon disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95 shrink-0 text-slate-300 hover:text-white"
-                  title="Ask Broker AI"
+                  className="glass-input rounded-xl border border-[#444748] flex items-center p-2.5 md:p-3 pr-3 md:pr-4 transition-all duration-300 relative z-20"
                 >
-                  <Sparkles size={16} className="text-white/80" />
-                </button>
+                  <input 
+                    type="text" 
+                    ref={textareaRef as any}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => setInputFocused(true)}
+                    onBlur={() => setInputFocused(false)}
+                    placeholder="Ask Broker AI"
+                    disabled={loading}
+                    className="flex-grow bg-transparent text-[#e2e2e4] border-none outline-none font-sans placeholder-[#c4c7c7]/50 px-3 py-1 text-[15px]"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || loading}
+                    className="p-2 text-[#c4c7c7] hover:text-[#00D18E] rounded-lg transition-colors border border-transparent hover:border-[#444748] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Ask Broker AI"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">send</span>
+                  </button>
+                </form>
+                {/* Glowing hover accent */}
+                <div className="absolute inset-0 bg-[#00D18E]/5 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
+              </div>
+
+              <div className="text-center text-[#c4c7c7] text-[11px] mt-2 select-none">
+                Broker AI can make mistakes. Verify important financial details and licenses.
               </div>
             </div>
-            <div className="custom-footnote">
-              Broker AI can make mistakes. Verify important financial details and licenses.
-            </div>
-          </div>
-        </footer>
+          </footer>
+        )}
 
         {/* Focus cursor atmospheric light element */}
         {inputFocused && (
@@ -1982,6 +2138,59 @@ export default function AIChat({
                     </div>
                   );
                 })()}
+
+                {/* Primary Project Payment Plans Breakdown */}
+                {(() => {
+                  const plansList = selectedPropertyForDetails.projectInfo?.paymentPlansList || (selectedPropertyForDetails as any).paymentPlansList;
+                  if (!Array.isArray(plansList) || plansList.length === 0) return null;
+                  
+                  return (
+                    <div className="space-y-3 text-left">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-mono uppercase text-emerald-400 font-bold tracking-wider flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[15px]">payments</span> Payment Plans & Maintenance
+                        </h5>
+                        <span className="text-[10px] font-mono bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
+                          {plansList.length} {plansList.length === 1 ? "Option" : "Options"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
+                        {plansList.map((planItem: any, idx: number) => (
+                          <div 
+                            key={`plan-item-${idx}`}
+                            className="bg-white/[0.03] border border-white/10 hover:border-emerald-500/30 p-3 rounded-xl transition flex flex-col justify-between space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-white uppercase">Plan #{idx + 1}</span>
+                              <span className="text-xs font-black text-emerald-400">
+                                {planItem.downPaymentPercent ?? 10}% Down
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-300 border-t border-white/5 pt-1.5 text-center">
+                              <div className="bg-white/5 p-1 rounded">
+                                <span className="block text-[9px] text-slate-400 uppercase">Years</span>
+                                <span className="font-bold">{planItem.installmentYears ?? 7} Yrs</span>
+                              </div>
+                              <div className="bg-white/5 p-1 rounded">
+                                <span className="block text-[9px] text-slate-400 uppercase">Delivery</span>
+                                <span className="font-bold">{planItem.deliveryYears ?? 3} Yrs</span>
+                              </div>
+                              <div className="bg-white/5 p-1 rounded">
+                                <span className="block text-[9px] text-emerald-400 uppercase">Maint.</span>
+                                <span className="font-bold text-emerald-400">{planItem.maintenancePercent ?? 8}%</span>
+                              </div>
+                            </div>
+                            {planItem.notes && (
+                              <p className="text-[10px] text-slate-400 italic">
+                                {planItem.notes}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Modal Footer Actions */}
@@ -2060,20 +2269,34 @@ export default function AIChat({
               </div>
 
               {contactSubmitted ? (
-                <div className="py-8 text-center flex flex-col items-center justify-center space-y-3.5">
+                <div className="py-6 text-center flex flex-col items-center justify-center space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                    <CheckCircle2 size={24} className="animate-pulse" />
+                    <CheckCircle2 size={24} />
                   </div>
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-black text-white">Request Sent Successfully!</h4>
-                    <p className="text-xs text-slate-400">Your request has been successfully sent to the property agent.</p>
+                  <div className="space-y-1.5 text-center">
+                    <h4 className="text-base font-black text-white">Request Sent</h4>
+                    <p className="text-xs text-slate-300">The agent will contact you shortly.</p>
+                    {submittedViewingDate && (
+                      <div className="pt-2">
+                        <span className="inline-block px-3 py-1.5 bg-white/[0.05] border border-white/10 rounded-lg text-xs text-slate-300">
+                          Preferred viewing date: <strong className="text-white font-mono">{submittedViewingDate}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
                 <form onSubmit={handleContactSubmit} className="space-y-4 text-left">
+                  {contactError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-start gap-2">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span>{contactError}</span>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                      Full Name
+                      Full Name <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
@@ -2087,7 +2310,7 @@ export default function AIChat({
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                      Phone Number
+                      Phone Number <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="tel"
@@ -2098,6 +2321,37 @@ export default function AIChat({
                       className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-white/40 focus:border-white/50 transition text-left"
                       dir="auto"
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                        Preferred Viewing Date <span className="text-slate-500 font-normal lowercase">(optional)</span>
+                      </label>
+                      {contactViewingDate ? (
+                        <button
+                          type="button"
+                          onClick={() => setContactViewingDate("")}
+                          className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer"
+                        >
+                          Clear date
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-mono">No viewing date selected</span>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={contactViewingDate}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={(e) => setContactViewingDate(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-white/40 focus:border-white/50 transition [color-scheme:dark]"
+                    />
+                    {!contactViewingDate && (
+                      <p className="text-[10.5px] text-slate-500">
+                        Default: <span className="text-slate-400">No viewing date selected</span> (optional)
+                      </p>
+                    )}
                   </div>
 
                   <div className="pt-2 flex justify-end gap-3">
@@ -2112,15 +2366,15 @@ export default function AIChat({
                     <button
                       type="submit"
                       disabled={submittingContact || !contactName.trim() || !contactPhone.trim()}
-                      className="px-5 py-2 bg-white text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md hover:bg-slate-200 transition"
+                      className="px-5 py-2 bg-white text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md hover:bg-slate-200 transition cursor-pointer"
                     >
                       {submittingContact ? (
                         <>
                           <Loader2 size={13} className="animate-spin" />
-                          Submitting...
+                          Sending Request...
                         </>
                       ) : (
-                        "Submit"
+                        "Send Request"
                       )}
                     </button>
                   </div>

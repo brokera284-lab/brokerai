@@ -109,8 +109,8 @@ const INITIAL_FORM_STATE = {
 
   // Stage 5: Payment Plans
   paymentPlansList: [
-    { id: "pay-1", downPaymentPercent: 10, installmentYears: 8, deliveryYears: 3, notes: "10% down payment with equal installments over 8 years" }
-  ] as Array<{ id: string; downPaymentPercent: number; installmentYears: number; deliveryYears: number; notes?: string }>,
+    { id: "pay-1", downPaymentPercent: 10, installmentYears: 8, deliveryYears: 3, maintenancePercent: 8, notes: "10% down payment with equal installments over 8 years" }
+  ] as Array<{ id: string; downPaymentPercent: number; installmentYears: number; deliveryYears: number; maintenancePercent?: number; notes?: string }>,
 
   // Stage 6: Legal Verification Documents
   legalPaperImage: "",
@@ -297,7 +297,7 @@ export default function PropertyUploadWizard({
       ...prev,
       paymentPlansList: [
         ...prev.paymentPlansList,
-        { id: "pay-" + Date.now(), downPaymentPercent: 10, installmentYears: 7, deliveryYears: 3, notes: "" }
+        { id: "pay-" + Date.now(), downPaymentPercent: 10, installmentYears: 7, deliveryYears: 3, maintenancePercent: 8, notes: "" }
       ]
     }));
   };
@@ -418,6 +418,7 @@ export default function PropertyUploadWizard({
           paymentMethod: "Installments",
           downPayment: formState.paymentPlansList.length > 0 ? formState.paymentPlansList[0].downPaymentPercent : 10,
           installmentYears: formState.paymentPlansList.length > 0 ? formState.paymentPlansList[0].installmentYears : 7,
+          maintenancePercent: formState.paymentPlansList.length > 0 ? formState.paymentPlansList[0].maintenancePercent : 8,
           monthlyInstallment: 0,
           interestFree: "Yes",
           deliveryStatus: formState.paymentPlansList.length > 0 ? `Delivery in ${formState.paymentPlansList[0].deliveryYears} Years` : "Under Construction"
@@ -482,50 +483,63 @@ export default function PropertyUploadWizard({
     <div className="fixed inset-0 z-50 bg-[#0a0a0b] text-[#e5e2e1] font-sans flex flex-col w-screen h-screen overflow-hidden select-none">
       
       {/* TOP FIXED NAVIGATION BAR - FULL WIDTH */}
-      <header className="h-16 w-full flex justify-between items-center px-6 md:px-12 fixed top-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/80 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Building className="text-white" size={22} />
-            <span className="font-extrabold text-xl tracking-tight text-white">Property Wizard</span>
+      <header className="h-16 w-full flex justify-between items-center px-3 sm:px-6 md:px-12 fixed top-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/80 border-b border-white/10 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-6">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Building className="text-white" size={20} />
+            <span className="font-extrabold text-sm sm:text-lg md:text-xl tracking-tight text-white hidden xs:inline">Property Wizard</span>
           </div>
           
           {/* UPLOAD MODE TOGGLE */}
-          <div className="flex items-center p-1 bg-white/5 border border-white/10 rounded-full text-xs">
+          <div className="flex items-center p-0.5 sm:p-1 bg-white/5 border border-white/10 rounded-full text-xs">
             <button
               type="button"
               onClick={() => { setFormState(prev => ({ ...prev, uploadType: "primary" })); setActiveStep(1); }}
-              className={`px-4 py-1.5 rounded-full font-semibold transition-all ${
+              className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full font-semibold transition-all text-[11px] sm:text-xs cursor-pointer ${
                 formState.uploadType === "primary" ? "bg-white text-black shadow-md" : "text-zinc-400 hover:text-white"
               }`}
             >
-              Primary Compound
+              Primary
             </button>
             <button
               type="button"
               onClick={() => { setFormState(prev => ({ ...prev, uploadType: "resale" })); setActiveStep(1); }}
-              className={`px-4 py-1.5 rounded-full font-semibold transition-all ${
+              className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full font-semibold transition-all text-[11px] sm:text-xs cursor-pointer ${
                 formState.uploadType === "resale" ? "bg-white text-black shadow-md" : "text-zinc-400 hover:text-white"
               }`}
             >
-              Resale Unit
+              Resale
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button 
             type="button" 
             onClick={onClose}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white transition flex items-center gap-2 px-4 text-xs font-semibold cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white transition flex items-center gap-1.5 px-3 sm:px-4 text-xs font-semibold cursor-pointer active:scale-95"
           >
-            <span>Close</span>
+            <span className="hidden sm:inline">Close</span>
             <X size={16} />
           </button>
         </div>
       </header>
 
+      {/* MOBILE STEP PROGRESS BAR */}
+      <div className="md:hidden fixed top-16 left-0 right-0 z-30 bg-[#111113]/95 backdrop-blur-md border-b border-white/10 px-4 py-2 flex items-center justify-between">
+        <span className="text-xs font-bold text-white">
+          Step {activeStep}/{maxSteps}: {stepsList.find(s => s.step === activeStep)?.title || "Details"}
+        </span>
+        <div className="w-24 bg-white/10 h-1.5 rounded-full overflow-hidden">
+          <div 
+            className="bg-white h-full transition-all duration-300"
+            style={{ width: `${(activeStep / maxSteps) * 100}%` }}
+          />
+        </div>
+      </div>
+
       {/* MAIN CONTAINER: SIDEBAR + CONTENT CANVAS */}
-      <div className="flex flex-1 pt-16 pb-20 h-full overflow-hidden w-full">
+      <div className="flex flex-1 pt-24 md:pt-16 pb-24 md:pb-20 h-full overflow-hidden w-full">
         
         {/* SIDEBAR NAVIGATION - COMPACT & HIGH DENSITY */}
         <aside className="hidden md:flex flex-col w-72 h-full py-6 bg-[#111113]/80 backdrop-blur-xl border-r border-white/10 shrink-0 overflow-y-auto">
@@ -570,7 +584,7 @@ export default function PropertyUploadWizard({
         </aside>
 
         {/* MAIN CANVAS AREA - FULL SPACE UTILIZATION */}
-        <main className="flex-1 h-full overflow-y-auto px-6 md:px-12 py-8 w-full max-w-[1600px] mx-auto space-y-8">
+        <main className="flex-1 h-full overflow-y-auto px-3.5 sm:px-6 md:px-12 py-4 sm:py-8 w-full max-w-[1600px] mx-auto space-y-6 sm:space-y-8">
           
           {/* STEP HEADER */}
           <header className="space-y-2">
@@ -1206,7 +1220,7 @@ export default function PropertyUploadWizard({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Down Payment %</label>
                         <input
@@ -1219,7 +1233,7 @@ export default function PropertyUploadWizard({
                               paymentPlansList: p.paymentPlansList.map(item => item.id === plan.id ? { ...item, downPaymentPercent: val } : item)
                             }));
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none focus:border-emerald-500/50"
                         />
                       </div>
 
@@ -1235,12 +1249,12 @@ export default function PropertyUploadWizard({
                               paymentPlansList: p.paymentPlansList.map(item => item.id === plan.id ? { ...item, installmentYears: val } : item)
                             }));
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none focus:border-emerald-500/50"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Delivery Time (Years)</label>
+                        <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Delivery (Years)</label>
                         <input
                           type="number"
                           value={plan.deliveryYears}
@@ -1251,7 +1265,26 @@ export default function PropertyUploadWizard({
                               paymentPlansList: p.paymentPlansList.map(item => item.id === plan.id ? { ...item, deliveryYears: val } : item)
                             }));
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none focus:border-emerald-500/50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Maintenance %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={plan.maintenancePercent ?? 8}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setFormState(p => ({
+                              ...p,
+                              paymentPlansList: p.paymentPlansList.map(item => item.id === plan.id ? { ...item, maintenancePercent: val } : item)
+                            }));
+                          }}
+                          placeholder="e.g. 8"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono outline-none focus:border-emerald-500/50"
                         />
                       </div>
                     </div>
@@ -1663,45 +1696,45 @@ export default function PropertyUploadWizard({
       </div>
 
       {/* FIXED BOTTOM ACTION BAR - FULL WIDTH */}
-      <footer className="h-20 w-full flex justify-between items-center px-6 md:px-12 fixed bottom-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/90 border-t border-white/10 shrink-0">
+      <footer className="h-20 w-full flex justify-between items-center px-4 sm:px-6 md:px-12 fixed bottom-0 left-0 right-0 z-40 backdrop-blur-xl bg-black/90 border-t border-white/10 shrink-0 pb-safe">
         <button
           type="button"
           onClick={handlePrev}
           disabled={activeStep === 1}
-          className={`px-6 py-2.5 rounded-full border border-white/20 font-semibold text-xs transition flex items-center gap-2 ${
-            activeStep === 1 ? "opacity-40 cursor-not-allowed text-zinc-500" : "text-white hover:bg-white/10"
+          className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full border border-white/20 font-semibold text-xs transition flex items-center gap-1.5 sm:gap-2 active:scale-95 ${
+            activeStep === 1 ? "opacity-40 cursor-not-allowed text-zinc-500" : "text-white hover:bg-white/10 cursor-pointer"
           }`}
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={15} />
           <span>Back</span>
         </button>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {activeStep < maxSteps ? (
             <button
               type="button"
               onClick={handleNext}
-              className="px-8 py-3 rounded-full bg-white text-black font-extrabold text-xs hover:bg-zinc-200 transition shadow-lg flex items-center gap-2 cursor-pointer"
+              className="px-5 sm:px-8 py-2.5 sm:py-3 rounded-full bg-white text-black font-extrabold text-xs hover:bg-zinc-200 transition shadow-lg flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95"
             >
               <span>Next Step</span>
-              <ArrowRight size={16} />
+              <ArrowRight size={15} />
             </button>
           ) : (
             <button
               type="button"
               onClick={handlePublish}
               disabled={isSaving}
-              className="px-8 py-3 rounded-full bg-white text-black font-extrabold text-xs hover:bg-zinc-200 transition shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-5 sm:px-8 py-2.5 sm:py-3 rounded-full bg-white text-black font-extrabold text-xs hover:bg-zinc-200 transition shadow-lg flex items-center gap-1.5 sm:gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
             >
               {isSaving ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" />
+                  <Loader2 size={15} className="animate-spin" />
                   <span>Publishing...</span>
                 </>
               ) : (
                 <>
-                  <span>Publish Property</span>
-                  <Send size={16} />
+                  <span>Publish</span>
+                  <Send size={15} />
                 </>
               )}
             </button>

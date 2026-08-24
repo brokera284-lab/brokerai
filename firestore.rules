@@ -155,8 +155,8 @@ service cloud.firestore {
 
     // ---------- /leads ----------
     match /leads/{leadId} {
-      allow read: if isSignedIn();
-      allow update: if isSignedIn();
+      allow read: if true;
+      allow update, delete: if isSignedIn();
       allow create: if true;
     }
 

@@ -37,6 +37,27 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 // Initialize Firestore with the specific databaseId if defined
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(default)");
 
+/**
+ * Strips all undefined fields recursively from objects/arrays so Firestore never throws
+ * "Unsupported field value: undefined" errors.
+ */
+export function cleanForFirestore<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== "object") return obj;
+  const cleaned: any = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date) && typeof (value as any).toMillis !== "function") {
+        cleaned[key] = cleanForFirestore(value);
+      } else if (Array.isArray(value)) {
+        cleaned[key] = value.filter(item => item !== undefined).map(item => (item && typeof item === "object" ? cleanForFirestore(item) : item));
+      } else {
+        cleaned[key] = value;
+      }
+    }
+  }
+  return cleaned as T;
+}
+
 export {
   collection,
   addDoc,

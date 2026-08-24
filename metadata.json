@@ -1,6 +1,6 @@
 {
-  "name": "Broker CRM",
-  "description": "Real estate dashboard, lead management engine, CRM, and property units manager.",
+  "name": "Broker AI",
+  "description": "Real estate AI assistant, leads management CRM, unit listings, and brokerage dashboard.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
